@@ -1,0 +1,66 @@
+name: puridict
+description: พจนานุกรมบาลี-ไทย
+
+version: 1.0.3+1
+
+environment:
+  sdk: ">=2.17.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  shared_preferences: ^2.0.15
+  http: ^0.13.5
+  provider: ^6.0.3
+  flutter_tts: ^3.6.3
+  google_fonts: ^2.3.3
+  flutter_localizations:
+    sdk: flutter
+  flutter_spinkit: ^5.1.0
+  sqflite: ^2.3.0
+  path_provider: ^2.0.15
+  crypto: ^3.0.3
+  # animate_do: ^3.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.5
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#0b4dae" # สำหรับ Android 8.0+
+  adaptive_icon_foreground: "assets/icon/app_icon.png" # สำหรับ Android 8.0+
+
+flutter_native_splash:
+  color: "#0b4dae"  # สีพื้นหลัง (ควรใช้สีหลักของแอป)
+  image: assets/splash/splash_icon.png  # ไฟล์โลโก้หรือรูปภาพที่ต้องการแสดง
+  
+
+  # ขนาดของรูปภาพ (แนะนำให้ใช้ขนาดไม่เกิน 60% ของหน้าจอ)
+  android_12:
+    color: "#0b4dae"
+    image: assets/splash/splash_icon.png
+    icon_background_color: "#0b4dae"
+    
+  # ตั้งค่าเพิ่มเติม
+  fullscreen: true  # ใช้โหมดเต็มจอ
+  android: true  # สร้างสำหรับ Android
+  ios: true  # สร้างสำหรับ iOS
+
+flutter:
+  uses-material-design: true
+  assets:
+    # bundle only gzipped sqlite; combined.json/sqlite (uncompressed) stay in repo as source-of-truth but are excluded from APK
+    - assets/data/combined.sqlite.gz
+  fonts:
+    - family: Sarabun
+      fonts:
+        - asset: assets/fonts/Sarabun-Regular.ttf
+        - asset: assets/fonts/Sarabun-Bold.ttf
+          weight: 700
