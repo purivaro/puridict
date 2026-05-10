@@ -77,8 +77,12 @@ class RecentSearches extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withOpacity(0.5),
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).dividerColor,
+                      width: 1,
+                    ),
                   ),
                   child: Text(
                     search,
