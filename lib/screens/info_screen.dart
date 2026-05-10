@@ -39,7 +39,7 @@ class InfoScreen extends StatelessWidget {
               _buildFeatureItem(context, 'ไม่ต้องใช้อินเทอร์เน็ต (Offline)'),
               const SizedBox(height: 24),
               Text(
-                'ขอบคุณข้อมูลจาก พจนานุกรมบาลี - ไทย อรรถกถาธรรมบท ภาค ๑ - ๔ วัดพระราม ๙ กาญจนาภิเษก กรุงเทพฯ',
+                'ขอบคุณข้อมูลจาก พจนานุกรมบาลี - ไทย อรรถกถาธรรมบท ภาค ๑ - ๘ วัดพระราม ๙ กาญจนาภิเษก กรุงเทพฯ',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 24),
@@ -53,12 +53,12 @@ class InfoScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'PuriDict v.1.0.1',
+                      'PuriDict v.2.0.0',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '© 2025 พัฒนาโดย พระอนวัช ภูริวโร',
+                      '© 2025 พัฒนาโดย พระมหาอนวัช ภูริวโร',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
