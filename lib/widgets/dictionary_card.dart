@@ -36,7 +36,6 @@ class _RoleStyle {
 
 class _DictionaryCardState extends State<DictionaryCard> {
   bool _showDetails = false;
-  bool _showOriginal = false;
 
   static final Map<String, _RoleStyle> _roleStyles = {
     'ธาตุ': _RoleStyle(
@@ -94,28 +93,67 @@ class _DictionaryCardState extends State<DictionaryCard> {
     final fs = widget.fontSize;
     final hasAnyDetail = _hasAnyDetail(entry);
 
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final primary = Theme.of(context).primaryColor;
+    final secondary = Theme.of(context).colorScheme.secondary;
+    final accentColors = widget.isTopResult
+        ? [secondary, const Color(0xFFFFB77D)] // orange → peach
+        : const [
+            Color(0xFF1E3A8A), // royal blue
+            Color(0xFF3730A3), // regal indigo
+          ];
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDarkMode
+              ? [Theme.of(context).cardColor, Theme.of(context).cardColor]
+              : [
+                  Theme.of(context).cardColor,
+                  Color.alphaBlend(primary.withOpacity(0.025),
+                      Theme.of(context).cardColor),
+                ],
+        ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: (widget.isTopResult ? secondary : primary)
+                .withOpacity(isDarkMode ? 0.0 : 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 6,
-            offset: const Offset(0, 3),
+            offset: const Offset(0, 2),
           ),
         ],
-        border: Border(
-          left: BorderSide(
-            color: widget.isTopResult
-                ? Theme.of(context).colorScheme.secondary
-                : Theme.of(context).primaryColor.withOpacity(0.6),
-            width: 4,
-          ),
-        ),
       ),
-      child: Column(
+      child: Stack(
+        children: [
+          // Gradient left bar
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: 4,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: accentColors,
+                ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                ),
+              ),
+            ),
+          ),
+          Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
@@ -129,10 +167,7 @@ class _DictionaryCardState extends State<DictionaryCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        entry.headword +
-                            (entry.homonymIndex != null
-                                ? ' [${entry.homonymIndex}]'
-                                : ''),
+                        entry.headword,
                         style: TextStyle(
                           fontSize: (fs + 0.4) * 18,
                           fontWeight: FontWeight.bold,
@@ -216,15 +251,40 @@ class _DictionaryCardState extends State<DictionaryCard> {
                 if (widget.isTopResult)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                        horizontal: 10, vertical: 5),
                     margin: const EdgeInsets.only(left: 8),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFFE932C), // secondary (orange)
+                          Color(0xFFFFB77D), // peach
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFE932C).withOpacity(0.45),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    child: const Text(
-                      'ตรงกับคำค้นหามากที่สุด',
-                      style: TextStyle(color: Colors.white, fontSize: 10),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome,
+                            color: Colors.white, size: 11),
+                        SizedBox(width: 4),
+                        Text(
+                          'ตรงกับคำค้นหามากที่สุด',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     ),
                   ),
                 const Spacer(),
@@ -232,6 +292,8 @@ class _DictionaryCardState extends State<DictionaryCard> {
               ],
             ),
           ),
+        ],
+      ),
         ],
       ),
     );
@@ -253,8 +315,8 @@ class _DictionaryCardState extends State<DictionaryCard> {
     if (root != null) {
       final mean = root.meaning;
       final label = (mean != null && mean.isNotEmpty)
-          ? '${root.root} ธาตุ ในความ $mean'
-          : '${root.root} ธาตุ';
+          ? '${root.root} [$mean]'
+          : root.root;
       chips.add(_pill(
         icon: Icons.spa_outlined,
         label: label,
@@ -435,38 +497,6 @@ class _DictionaryCardState extends State<DictionaryCard> {
       out.add(const SizedBox(height: 12));
     }
 
-    if (entry.meaningsOriginal != null &&
-        entry.meaningsOriginal!.isNotEmpty) {
-      out.add(_section(
-        context,
-        icon: Icons.article_outlined,
-        title: 'ความหมายต้นฉบับ',
-        accent: const Color(0xFF455A64),
-        trailing: InkWell(
-          onTap: () => setState(() => _showOriginal = !_showOriginal),
-          child: Icon(
-            _showOriginal
-                ? Icons.keyboard_arrow_up
-                : Icons.keyboard_arrow_down,
-            size: 18,
-            color: Theme.of(context).textTheme.bodySmall?.color,
-          ),
-        ),
-        child: Text(
-          _showOriginal
-              ? entry.meaningsOriginal!
-              : _truncate(entry.meaningsOriginal!, 120),
-          style: TextStyle(
-            fontSize: fs * 14,
-            height: 1.6,
-            color: _showOriginal
-                ? null
-                : Theme.of(context).textTheme.bodySmall?.color,
-          ),
-        ),
-      ));
-    }
-
     return out;
   }
 
@@ -547,15 +577,19 @@ class _DictionaryCardState extends State<DictionaryCard> {
   Widget _vigrahaBody(
       BuildContext context, DictionaryEntry entry, double fs, bool isDark) {
     const accent = Color(0xFF6A1B9A);
+    final chain = entry.grammar?.compoundChain ?? const [];
+    final hasChain = chain.length >= 2;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ─── ประเภท: pill ───────────────────────────────
         if (entry.grammar?.compoundType != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
               spacing: 6,
+              runSpacing: 4,
               children: [
                 Text('ประเภท:',
                     style: TextStyle(
@@ -569,7 +603,7 @@ class _DictionaryCardState extends State<DictionaryCard> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    entry.grammar!.compoundType!,
+                    _composeCompoundTypeLabel(entry),
                     style: TextStyle(
                       fontSize: fs * 12,
                       fontWeight: FontWeight.w600,
@@ -580,40 +614,15 @@ class _DictionaryCardState extends State<DictionaryCard> {
               ],
             ),
           ),
-        if (entry.vigraha != null)
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.white.withOpacity(0.85),
-              borderRadius: BorderRadius.circular(10),
-              border: Border(
-                left: BorderSide(color: accent, width: 4),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'วิ. ',
-                  style: TextStyle(
-                    fontSize: fs * 16,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : accent,
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    entry.vigraha!,
-                    style: TextStyle(fontSize: fs * 15, height: 1.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        // ─── สมาสซ้อน: render เป็น step cards ─────────────
+        if (hasChain)
+          ...chain.map((s) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _compoundStepCard(context, s, fs, isDark, accent),
+              ))
+        // ─── สมาสเดี่ยว: render vigraha block แบบเดิม ─────
+        else if (entry.vigraha != null)
+          _vigrahaBlock(context, entry.vigraha!, fs, isDark, accent),
         if (entry.grammar?.saadhana != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -626,6 +635,140 @@ class _DictionaryCardState extends State<DictionaryCard> {
             ),
           ),
       ],
+    );
+  }
+
+  /// สร้างข้อความ "ประเภท:" — ถ้ามีสมาสซ้อนจะรวมข้อมูล inner ด้วย
+  /// เช่น "ฉัฏฐีตุลยาธิกรณพหุพพิหิสมาส มี อสมาหาร ทวันทวสมาส เป็นภายใน"
+  String _composeCompoundTypeLabel(DictionaryEntry entry) {
+    final outer = entry.grammar?.compoundType ?? '';
+    final chain = entry.grammar?.compoundChain ?? const [];
+    if (chain.length < 2) return outer;
+    final innerTypes =
+        chain.where((s) => s.internal).map((s) => s.type).toList();
+    if (innerTypes.isEmpty) return outer;
+    return '$outer มี ${innerTypes.join(', ')} เป็นภายใน';
+  }
+
+  Widget _vigrahaBlock(BuildContext context, String vigraha, double fs,
+      bool isDark, Color accent) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withOpacity(0.08)
+            : Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: accent, width: 4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'วิ. ',
+            style: TextStyle(
+              fontSize: fs * 16,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : accent,
+            ),
+          ),
+          Expanded(
+            child: Text(vigraha,
+                style: TextStyle(fontSize: fs * 15, height: 1.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _compoundStepCard(BuildContext context, CompoundStep s, double fs,
+      bool isDark, Color accent) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withOpacity(0.08)
+            : Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: accent, width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (s.abbr.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(isDark ? 0.30 : 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    s.abbr,
+                    style: TextStyle(
+                      fontSize: fs * 11,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : accent,
+                    ),
+                  ),
+                ),
+              if (s.type.isNotEmpty)
+                Text(
+                  s.type,
+                  style: TextStyle(
+                    fontSize: fs * 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if (s.internal)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE0B2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'เป็นภายใน',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFB28704),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (s.vigraha != null && s.vigraha!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'วิ. ',
+                    style: TextStyle(
+                      fontSize: fs * 16,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : accent,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(s.vigraha!,
+                        style: TextStyle(fontSize: fs * 15, height: 1.5)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -797,10 +940,6 @@ class _DictionaryCardState extends State<DictionaryCard> {
       }
     }
 
-    final vib = entry.parseVibhattiSuffix();
-    if (vib != null) {
-      out.add(_EtyBlockData(part: vib.part, role: 'วิภัตติ', meaning: vib.name));
-    }
     return out;
   }
 
@@ -908,6 +1047,4 @@ class _DictionaryCardState extends State<DictionaryCard> {
     );
   }
 
-  String _truncate(String s, int n) =>
-      s.length <= n ? s : '${s.substring(0, n)}…';
 }

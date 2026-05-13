@@ -153,30 +153,12 @@ class _SearchBoxState extends State<SearchBox> {
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: service.searchQuery.isEmpty
-                      ? null
-                      : () {
-                        FocusScope.of(context).unfocus();
-                        service.performSearch();
-                      },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                    
-                    backgroundColor: (Theme.of(context).brightness == Brightness.dark 
-                      ? AppTheme.darkHeaderColor  
-                      : Theme.of(context).primaryColor),
-                  ),
-                  child: const Text('ค้นหา'),
-                ),
+              _GradientSearchButton(
+                enabled: service.searchQuery.isNotEmpty,
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  service.performSearch();
+                },
               ),
             ],
           ),
@@ -185,3 +167,90 @@ class _SearchBoxState extends State<SearchBox> {
     );
   }
 }
+
+class _GradientSearchButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onPressed;
+  const _GradientSearchButton({required this.enabled, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // โทนเดียวกับ header — vibrant royal blue
+    final activeColors = isDark
+        ? const [Color(0xFF1E3A8A), Color(0xFF2851B8)]
+        : const [
+            Color(0xFF1E3A8A),
+            Color(0xFF2851B8),
+            Color(0xFF3B6FE0),
+          ];
+    // disabled: pastel royal — ยังเป็นน้ำเงินสดใส แค่ lighter
+    final disabledColors = isDark
+        ? const [Color(0xFF3A5499), Color(0xFF4E6BB8)]
+        : const [
+            Color(0xFF7B98D8),
+            Color(0xFF94B0E8),
+            Color(0xFFB0C5EF),
+          ];
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      height: 48,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: const Alignment(-1.0, -0.4),
+          end: const Alignment(1.0, 1.0),
+          colors: enabled ? activeColors : disabledColors,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF1E3A8A).withOpacity(0.4),
+                  blurRadius: 14,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: const Alignment(0, -0.2),
+            colors: [
+              Colors.white.withOpacity(0.14),
+              Colors.white.withOpacity(0.0),
+            ],
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            borderRadius: BorderRadius.circular(12),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                child: Text(
+                  'ค้นหา',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+  }
+}
+

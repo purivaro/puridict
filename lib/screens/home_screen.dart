@@ -75,23 +75,63 @@ class HomeScreen extends StatelessWidget {
     // คำนวณความสูงของ status bar
     final statusBarHeight = MediaQuery.of(context).padding.top;
     
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = Theme.of(context).primaryColor;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark 
-            ? AppTheme.darkHeaderColor  
-            : Theme.of(context).primaryColor,
+        // Luxury sapphire–indigo gradient (4 stops) ใส feel ลึก
+        gradient: LinearGradient(
+          begin: const Alignment(-1.0, -0.4),
+          end: const Alignment(1.0, 1.0),
+          colors: isDark
+              ? const [
+                  Color(0xFF132A6E),
+                  Color(0xFF1E3A8A),
+                  Color(0xFF2851B8),
+                ]
+              : const [
+                  Color(0xFF1E3A8A), // royal blue (เริ่มสว่างกว่าเดิม)
+                  Color(0xFF2851B8), // luminous royal
+                  Color(0xFF3B6FE0), // vibrant royal
+                  Color(0xFF5B8DEF), // bright sky royal (จบสว่างสดใส)
+                ],
+          stops: isDark
+              ? const [0.0, 0.55, 1.0]
+              : const [0.0, 0.40, 0.75, 1.0],
+        ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(20),
           bottomRight: Radius.circular(20),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: const Color(0xFF1E3A8A).withOpacity(isDark ? 0.0 : 0.35),
+            blurRadius: 20,
+            spreadRadius: -2,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
+      ),
+      foregroundDecoration: BoxDecoration(
+        // glossy highlight ด้านบน — เพิ่มความ premium แบบ metallic
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: const Alignment(0, -0.2),
+          colors: [
+            Colors.white.withOpacity(isDark ? 0.04 : 0.10),
+            Colors.white.withOpacity(0.0),
+          ],
+        ),
       ),
       padding: EdgeInsets.only(
         top: statusBarHeight + 2,
@@ -217,17 +257,57 @@ class HomeScreen extends StatelessWidget {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? (Theme.of(context).brightness == Brightness.dark 
-            ? AppTheme.darkHeaderColor  
-            : Theme.of(context).primaryColor) : Colors.transparent,
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: const Alignment(-1.0, -0.4),
+                  end: const Alignment(1.0, 1.0),
+                  colors: isDark
+                      ? const [
+                          Color(0xFF1E3A8A),
+                          Color(0xFF2851B8),
+                        ]
+                      : const [
+                          Color(0xFF1E3A8A),
+                          Color(0xFF2851B8),
+                          Color(0xFF3B6FE0),
+                        ],
+                )
+              : null,
+          color: isSelected ? null : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF1E3A8A).withOpacity(0.3),
+                    blurRadius: 10,
+                    spreadRadius: -2,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
+        foregroundDecoration: isSelected
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: const Alignment(0, -0.2),
+                  colors: [
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.0),
+                  ],
+                ),
+              )
+            : null,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
