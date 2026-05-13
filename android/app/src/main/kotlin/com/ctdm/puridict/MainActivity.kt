@@ -1,4 +1,4 @@
-package com.example.puridict
+package com.ctdm.puridict
 
 import io.flutter.embedding.android.FlutterActivity
 
