@@ -47,3 +47,23 @@ app.*.map.json
 # Dictionary intermediate data files (regeneratable; not used at runtime)
 assets/data/combined.json
 assets/data/combined.jsonl
+
+# Android signing secrets — NEVER commit
+android/key.properties
+android/app/upload-keystore.jks
+android/app/*.jks
+android/app/*.keystore
+android/app/upload-cert.pem
+
+# Local Claude Code settings + Playwright MCP cache
+.claude/
+.playwright-mcp/
+
+# Local automation/screenshot scratch files (Playwright snapshots, build logs)
+play-*.yml
+play-*.png
+asc-*.yml
+asc-*.png
+splash-test*.png
+emulator-*.png
+reset-*.png

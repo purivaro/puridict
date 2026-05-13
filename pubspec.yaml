@@ -1,7 +1,7 @@
 name: puridict
 description: พจนานุกรมบาลี-ไทย
 
-version: 2.0.0+1
+version: 2.0.0+10
 
 environment:
   sdk: ">=2.17.0 <3.0.0"
@@ -45,7 +45,7 @@ flutter_native_splash:
   # ขนาดของรูปภาพ (แนะนำให้ใช้ขนาดไม่เกิน 60% ของหน้าจอ)
   android_12:
     color: "#0b4dae"
-    image: assets/splash/splash_icon.png
+    image: assets/splash/splash_icon_android12.png
     icon_background_color: "#0b4dae"
     
   # ตั้งค่าเพิ่มเติม
