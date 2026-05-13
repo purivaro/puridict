@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'package:puridict/models/dictionary_entry.dart';
+import 'package:puridict/services/pali_stemmer.dart';
 import 'package:puridict/services/update_service.dart';
 
 enum DataUpdateStatus { idle, checking, downloading, applied, error }
@@ -18,7 +19,7 @@ class DictionaryService extends ChangeNotifier {
   static const String _dbFileName = 'combined.sqlite';
 
   /// bump เมื่ออัปเดตไฟล์ dataset ที่ bundle มา (จะ trigger copy ใหม่)
-  static const int _assetDbVersion = 1;
+  static const int _assetDbVersion = 5;
 
   /// throttle: เช็ค manifest อย่างมาก 1 ครั้งต่อช่วงเวลานี้
   static const Duration _checkInterval = Duration(hours: 6);
@@ -406,19 +407,44 @@ class DictionaryService extends ChangeNotifier {
 
   Future<List<DictionaryEntry>> _searchPaliToThai(
       Database db, String query) async {
-    final exact = await db.rawQuery(
+    // ถอดวิภัตติ/ปัจจัย/สนธิที่พบบ่อย → candidate stems
+    // เช่น ปุริโส → ปุริส, ภวตีติ → ภวติ → ภว, นาปิ → น
+    final candidates = PaliStemmer.generateCandidates(query);
+
+    // 1) exact match — ค้น original ก่อนเพื่อให้ขึ้นเป็น top result
+    final exactOrig = await db.rawQuery(
       'SELECT data_json FROM entries WHERE headword = ? LIMIT 50',
       [query],
     );
+
+    // 2) exact match บน stem candidates (ที่ไม่ใช่ original)
+    final stems =
+        candidates.where((c) => c != query).toList(growable: false);
+    List<Map<String, Object?>> exactStems = const [];
+    if (stems.isNotEmpty) {
+      final placeholders = List.filled(stems.length, '?').join(',');
+      exactStems = await db.rawQuery(
+        'SELECT data_json FROM entries WHERE headword IN ($placeholders) LIMIT 30',
+        stems,
+      );
+    }
+
+    // 3) LIKE match บน original (substring)
+    final excludePh = List.filled(candidates.length, '?').join(',');
     final contains = await db.rawQuery(
-      'SELECT data_json FROM entries WHERE headword LIKE ? AND headword != ? LIMIT 30',
-      ['%$query%', query],
+      'SELECT data_json FROM entries WHERE headword LIKE ? '
+      'AND headword NOT IN ($excludePh) LIMIT 30',
+      ['%$query%', ...candidates],
     );
 
-    // FTS5 prefix match — escape quotes in query
+    // 4) FTS5 prefix match บน headword — รวม candidates ทั้งหมดด้วย OR
     List<Map<String, Object?>> fts = const [];
-    final ftsQuery = _buildFtsPrefixQuery(query);
-    if (ftsQuery != null) {
+    final ftsTerms = candidates
+        .map(_buildFtsPrefixQuery)
+        .whereType<String>()
+        .map((q) => 'headword:$q')
+        .join(' OR ');
+    if (ftsTerms.isNotEmpty) {
       try {
         fts = await db.rawQuery('''
           SELECT e.data_json
@@ -426,14 +452,15 @@ class DictionaryService extends ChangeNotifier {
           JOIN entries e ON e.rowid = f.rowid
           WHERE entries_fts MATCH ?
           LIMIT 30
-        ''', [ftsQuery]);
+        ''', [ftsTerms]);
       } catch (_) {
         fts = const [];
       }
     }
 
     return _mergeUnique([
-      ...exact.map(_decode),
+      ...exactOrig.map(_decode),
+      ...exactStems.map(_decode),
       ...contains.map(_decode),
       ...fts.map(_decode),
     ]);
@@ -441,18 +468,22 @@ class DictionaryService extends ChangeNotifier {
 
   Future<List<DictionaryEntry>> _searchThaiToPali(
       Database db, String query) async {
+    // ลบ marker ภาษาไทย (อ., ก., ซึ่ง, อัน, ใน, ของ ฯลฯ) ก่อนค้น
+    final cleaned = PaliStemmer.cleanThaiQuery(query);
+
     final exact = await db.rawQuery(
-      'SELECT data_json FROM entries WHERE gloss_th = ? LIMIT 50',
-      [query],
+      'SELECT data_json FROM entries WHERE gloss_th = ? OR gloss_th = ? LIMIT 50',
+      [query, cleaned],
     );
     final contains = await db.rawQuery(
       '''
       SELECT data_json FROM entries
-      WHERE (gloss_th LIKE ? OR meanings_original LIKE ?)
+      WHERE (gloss_th LIKE ? OR gloss_th LIKE ?)
+        AND gloss_th != ?
         AND gloss_th != ?
       LIMIT 60
       ''',
-      ['%$query%', '%$query%', query],
+      ['%$query%', '%$cleaned%', query, cleaned],
     );
     return _mergeUnique([
       ...exact.map(_decode),
@@ -470,7 +501,9 @@ class DictionaryService extends ChangeNotifier {
     final seen = <String>{};
     final out = <DictionaryEntry>[];
     for (final e in entries) {
-      if (seen.add(e.id)) out.add(e);
+      // composite key — กัน edge case ที่ id ว่างหรือซ้ำ
+      final key = '${e.id}|${e.headword}|${e.homonymIndex ?? ''}|${e.glossTh}';
+      if (seen.add(key)) out.add(e);
     }
     return out;
   }

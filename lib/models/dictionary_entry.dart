@@ -99,24 +99,25 @@ class DictionaryEntry {
   /// แสดง pos/cat เป็น chip แรก เช่น "ก." / "น."
   String? get primaryPos => pos.isNotEmpty ? pos.first : null;
 
-  /// Parse suffix วิภัตติ จาก meanings_original สำหรับกิริยา
-  /// คืน VibhattiSuffix(part, name) เช่น ("สฺสติ", "วิภัตติ") — null ถ้าหาไม่เจอ
-  VibhattiSuffix? parseVibhattiSuffix() {
-    if (categoryFull != 'กิริยา') return null;
-    final src = meaningsOriginal;
-    if (src == null || src.isEmpty) return null;
-    final m = RegExp(r'\+\s*(\S+)\s+(\S*วิภัตติ)').firstMatch(src);
-    if (m == null) return null;
-    return VibhattiSuffix(part: m.group(1)!, name: m.group(2)!);
-  }
-
-  /// คืน verb root จาก etymology.verb_root โดยตรง
+  /// คืน verb root จาก etymology.verb_root หรือ fallback ไปหา component
+  /// ที่มี role = "ธาตุ"
   EffectiveVerbRoot? get effectiveVerbRoot {
     final ety = etymology;
     if (ety == null) return null;
     final root = ety.verbRoot;
-    if (root == null || root.isEmpty) return null;
-    return EffectiveVerbRoot(root: root, meaning: ety.verbRootMeaning);
+    if (root != null && root.isNotEmpty) {
+      return EffectiveVerbRoot(root: root, meaning: ety.verbRootMeaning);
+    }
+    // fallback: หา component ที่ role contains "ธาตุ"
+    for (final c in ety.components) {
+      if ((c.role ?? '').contains('ธาตุ')) {
+        final part = c.part;
+        if (part != null && part.isNotEmpty) {
+          return EffectiveVerbRoot(root: part, meaning: c.meaning);
+        }
+      }
+    }
+    return null;
   }
 
   static List<String> _stringList(dynamic v) {
@@ -190,17 +191,57 @@ class EtymologyComponent {
 class Grammar {
   final String? compoundType;
   final String? saadhana;
+  final List<CompoundStep> compoundChain;
 
-  const Grammar({this.compoundType, this.saadhana});
+  const Grammar({
+    this.compoundType,
+    this.saadhana,
+    this.compoundChain = const [],
+  });
 
   factory Grammar.fromJson(Map<String, dynamic> j) => Grammar(
         compoundType: j['compound_type'] as String?,
         saadhana: j['saadhana'] as String?,
+        compoundChain: ((j['compound_chain'] ?? const []) as List)
+            .whereType<Map>()
+            .map((e) => CompoundStep.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => {
         if (compoundType != null) 'compound_type': compoundType,
         if (saadhana != null) 'saadhana': saadhana,
+        if (compoundChain.isNotEmpty)
+          'compound_chain': compoundChain.map((e) => e.toJson()).toList(),
+      };
+}
+
+/// 1 step ใน compound_chain — ใช้แสดงสมาสซ้อน
+class CompoundStep {
+  final String abbr; // เช่น "ส.ทวัน.วิ."
+  final String type; // เช่น "อสมาหาร ทวันทวสมาส"
+  final String? vigraha;
+  final bool internal; // true = สมาสภายใน, false = สมาสนอก
+
+  const CompoundStep({
+    required this.abbr,
+    required this.type,
+    this.vigraha,
+    this.internal = false,
+  });
+
+  factory CompoundStep.fromJson(Map<String, dynamic> j) => CompoundStep(
+        abbr: (j['abbr'] ?? '').toString(),
+        type: (j['type'] ?? '').toString(),
+        vigraha: j['vigraha'] as String?,
+        internal: j['internal'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'abbr': abbr,
+        'type': type,
+        if (vigraha != null) 'vigraha': vigraha,
+        'internal': internal,
       };
 }
 
@@ -245,12 +286,6 @@ class SourceInfo {
         if (pdfPage != null) 'pdf_page': pdfPage,
         if (originalId != null) 'original_id': originalId,
       };
-}
-
-class VibhattiSuffix {
-  final String part;
-  final String name;
-  const VibhattiSuffix({required this.part, required this.name});
 }
 
 class EffectiveVerbRoot {

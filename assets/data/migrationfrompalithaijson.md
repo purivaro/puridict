@@ -422,3 +422,171 @@ SELECT data_json FROM entries WHERE volumes = '5-8' LIMIT 100;
 
 ถ้าสงสัย behavior ควรเทียบกับ web reference ก่อนเสมอ — schema ใหม่นี้เป็น
 ของกลางที่ใช้ทั้งฝั่ง web และ mobile เพื่อให้ข้อมูล/พฤติกรรมเหมือนกัน
+
+---
+
+## 9. Update log — schema additions / changes (2026-05-11)
+
+> ส่วนนี้เพิ่มเติมขึ้นภายหลังเอกสารต้น เพื่อให้ AI/นักพัฒนา mobile ทราบว่า data
+> เปลี่ยนอะไรบ้างหลังจากเปิดใช้งานครั้งแรก ถ้าใช้ schema/UI ตามเอกสารต้น
+> (ข้อ 1–8) ส่วนใหญ่จะ "ใช้ได้อยู่" — แต่จะ **ขาด feature ใหม่** ที่อธิบายไว้ตรงนี้
+
+### 9.1 ★ NEW field: `grammar.compound_chain[]` — สมาสซ้อน
+
+ก่อนหน้านี้ entry มี `grammar.compound_type` (string เดี่ยว) + `vigraha`
+(string เดี่ยว). เคสที่เป็นสมาสซ้อนหลายชั้น (994 entries / ~5%) ตอนนี้มี
+ฟิลด์ใหม่ `grammar.compound_chain` เก็บลำดับการวิเคราะห์ทั้งหมดในรูป array:
+
+```jsonc
+{
+  "grammar": {
+    "compound_type": "ฉัฏฐีตุลยาธิกรณพหุพพิหิสมาส",   // outermost (เก่า, ยังเก็บไว้)
+    "compound_chain": [
+      {
+        "abbr": "ส.ทวัน.วิ.",
+        "type": "อสมาหาร ทวันทวสมาส",
+        "vigraha": "มาลา จ คนฺโธ จ วตฺถญฺจ = มาลาคนฺธวตฺถํ",
+        "internal": true                              // ★ สมาสภายใน — วิเคราะห์ก่อน
+      },
+      {
+        "abbr": "ฉ.ตุล.วิ.",
+        "type": "ฉัฏฐีตุลยาธิกรณพหุพพิหิสมาส",
+        "vigraha": "มาลาคนฺธวตฺถํ อาทิ เยสํ ตานิ มาลาคนฺธวตฺถาทีนิ (วตฺถูนิ)",
+        "internal": false                             // ★ สมาสนอก — วิเคราะห์ที่หลัง
+      }
+    ]
+  },
+  "vigraha": "..."  // outermost vigraha (เก่า, ยังเก็บไว้)
+}
+```
+
+**กฎที่ mobile ต้องใช้**:
+- `compound_chain` จะเก็บ steps **ตามลำดับเล่ม** — innermost (`internal: true`) อยู่ก่อน, outermost อยู่ท้าย
+- ลึกสุด: 4 levels (พบใน `ทุนฺนิวตฺถทุปฺปารุตทสฺสเนน`)
+- entry ที่ไม่ซ้อน — อาจไม่มี `compound_chain` หรือมี chain แค่ 1 step. **fall back** → ใช้ `compound_type` + `vigraha` เดิมแทน
+- `compound_type` (top-level) ยังตรงกับ outer step ของ chain — ฝั่ง web ใช้แสดง chip "ประเภท:" บนสุดของ section
+
+**Dart sample**:
+```dart
+class CompoundStep {
+  final String abbr;       // 'ส.ทวัน.วิ.'
+  final String type;       // 'อสมาหาร ทวันทวสมาส'
+  final String? vigraha;   // 'มาลา จ คนฺโธ จ วตฺถญฺจ = มาลาคนฺธวตฺถํ'
+  final bool   internal;   // true = inside ('เป็นภายใน'), false = outermost
+  factory CompoundStep.fromJson(Map<String, dynamic> j) => CompoundStep(
+    abbr: j['abbr'] ?? '',
+    type: j['type'] ?? '',
+    vigraha: j['vigraha'],
+    internal: j['internal'] ?? false,
+  );
+}
+
+// In Grammar.fromJson:
+compoundChain: ((j['compound_chain'] ?? []) as List)
+    .map((s) => CompoundStep.fromJson(s)).toList(),
+```
+
+**UI pattern**: render `compound_chain` เป็น list ของ "step cards"
+แต่ละอันมี:
+- abbr badge (เช่น `ส.ทวัน.วิ.` — ใช้สีม่วงให้เข้ากับ vigraha section)
+- ชื่อ type เต็ม (เช่น `อสมาหาร ทวันทวสมาส`)
+- ถ้า `internal: true` → แสดงป้าย `เป็นภายใน` (สีส้ม/เหลือง)
+- vigraha formula ในบรรทัดถัดไป
+
+ถ้า `compound_chain` ว่าง → แสดงแบบเดิม (single `compound_type` + `vigraha`)
+
+### 9.2 Field ที่ถูกเติมเพิ่มเติม (ไม่ใช่ schema ใหม่ แต่ data หนาแน่นขึ้น)
+
+| Field | เพิ่ม | หมายเหตุ |
+|---|---|---|
+| `etymology.components` | +163 | เคสที่เคยขาด (parsed จาก `meanings_original`) |
+| `etymology.components` (verb prefix `บทหน้า`) | +854 | กิริยาที่เคยมีแต่ ธาตุ + ปัจจัย ตอนนี้มี prefix ครบ |
+| `vigraha` | +347 | regex + AI extraction |
+| `grammar.saadhana` | +141 | regex + AI extraction |
+| `grammar.compound_type` | +894 | เพิ่ม qualifier prefix (เช่น "วิเสสนบุพพบท") |
+| `examples` | +50 | AI extraction |
+| `declension_sample` | +629 | regex extraction |
+
+เปิด DB อันใหม่จาก `combined.sqlite` แล้ว field พวกนี้จะ populated ให้
+อัตโนมัติ — ไม่ต้องแก้ logic อะไร แค่ถ้า UI render เคย skip-ถ้า-empty
+ตอนนี้จะเห็นข้อมูลโชว์เพิ่มขึ้นเฉย ๆ
+
+### 9.3 Compound type formatting — มี space ที่ qualifier
+
+ค่าใน `compound_type` (และ `compound_chain[].type`) ตอนนี้ใส่ space ระหว่าง
+qualifier กับ main type สำหรับ pattern เหล่านี้:
+
+| รูปแบบใหม่ | รูปแบบเก่า |
+|---|---|
+| `วิเสสนบุพพบท กัมมธารยสมาส` | `วิเสสนบุพพบทกัมมธารยสมาส` |
+| `อวธารณบุพพบท กัมมธารยสมาส` | `อวธารณบุพพบทกัมมธารยสมาส` |
+| `สหบุพพบท พหุพพิหิสมาส` | `สหบุพพบทพหุพพิหิสมาส` |
+| `อสมาหาร ทวันทวสมาส` | `อสมาหารทวันทวสมาส` |
+| `สมาหาร ทวันทวสมาส` | `สมาหารทวันทวสมาส` |
+| `อสมาหาร ทิคุสมาส` | `อสมาหารทิคุสมาส` |
+| `สมาหาร ทิคุสมาส` | `สมาหารทิคุสมาส` |
+
+**สำคัญ**: ตัว simple แบบ `ฉัฏฐีตัปปุริสสมาส`, `ตติยาตัปปุริสสมาส`,
+`ฉัฏฐีตุลยาธิกรณพหุพพิหิสมาส` ฯลฯ **ไม่มี** space — เก็บเป็นคำเดียว
+
+ถ้า mobile UI มีการ search/filter ด้วย compound_type string ตรง ๆ —
+ต้อง update string-matching ให้รองรับรูปแบบ space ใหม่
+
+### 9.4 Verb context (กิริยา) — `entry.context`
+
+กิริยาที่มี subject ตัวอย่างจะเก็บที่ `entry.context` เช่น
+`"เช่น พุทฺธา อ. พระพุทธเจ้า ท."` (กรณีคำว่า `โอโลเกนฺติ`)
+
+UI ฝั่ง web แสดงเป็น italic block ด้านบนของความหมาย ใต้ meta chips. mobile
+ควรแสดงเหมือนกัน (รูป quote/italic) เพราะกิริยาส่วนใหญ่ไม่มี
+`examples` ในรูปแบบ case+form แบบนาม — `context` คือ subject reference
+ที่สำคัญที่สุด
+
+### 9.5 Vibhatti suffix — render dynamically
+
+กิริยาที่มี vibhatti (เช่น `ทสฺสติ` → suffix `สฺสติ`) ส่วนใหญ่ **ไม่ได้
+เก็บเป็น field ตรง** — ฝั่ง web parse จาก `meanings_original` ด้วย regex:
+
+```dart
+({String part, String name})? parseVibhattiSuffix(DictEntry e) {
+  if (e.categoryFull != 'กิริยา') return null;
+  final m = RegExp(r'\+\s*(\S+)\s+(\S*วิภัตติ)').firstMatch(e.meaningsOriginal ?? '');
+  if (m == null) return null;
+  return (part: m.group(1)!, name: m.group(2)!);
+}
+```
+
+แล้วเอามาแสดงเป็น chip ตัวสุดท้ายในโครงสร้างคำ (เช่น `ทา ธาตุ + อ ปัจจัย + สฺสติ วิภัตติ`)
+**ทำที่ runtime — data layer ไม่ได้เก็บไว้**. เฉพาะกิริยาที่มี
+`vibhatti_info.ending` (จาก declension lookup) เท่านั้นที่มีใน data.
+
+### 9.6 รวมคำซ้ำข้ามภาค → "ภาค 1-8"
+
+3,611 entries ที่เคยเป็น duplicate ระหว่างภาค 1-4 / 5-8 ถูก **merge เป็น
+ใบเดียว** มี `volumes: "1-8"` แทนที่จะเก็บแยก. UI ฝั่ง mobile ที่ display
+"ธมฺมปท ภาค {volumes}" จะเห็น "1-8" สำหรับเคสเหล่านี้อัตโนมัติ — ไม่ต้องแก้อะไร
+
+### 9.7 Pali TTS phonetic transform
+
+ก่อนสั่ง `flutter_tts.speak()` ภาษา `'th-TH'` ให้แปลง Pali (Thai script) →
+Thai phonetic ก่อน เช่น:
+- `ธมฺม` → `ธัมมะ` (consonant cluster)
+- `อนาถ` → `อะนาถะ` (implicit short /a/ on bare consonants)
+- `คามํ` → `คามัง` (niggahita ํ)
+- `ตสฺมึ` → `ตัสมิง` (ึ → ิง)
+
+ดู [`page/dict/js/puridict.js`](../../js/puridict.js) function `paliToThaiSpoken()`
+— port มาเป็น Dart ตรง ๆ ได้
+
+### 9.8 Checklist mobile update
+
+- [ ] เพิ่ม `CompoundStep` model + render `compound_chain` (ดู 9.1)
+- [ ] รองรับ space ใน compound_type strings (ดู 9.3)
+- [ ] แสดง `entry.context` สำหรับกิริยา (ดู 9.4)
+- [ ] เพิ่ม regex parse vibhatti suffix สำหรับกิริยา + chip render (ดู 9.5)
+- [ ] เพิ่ม `paliToThaiSpoken()` ก่อนเรียก TTS (ดู 9.7)
+- [ ] ทดสอบเคสทดสอบ:
+  - `มาลาคนฺธวตฺถาทีนิ` → ต้องมี chain 2 steps (ส.ทวัน. + ฉ.ตุล.)
+  - `ทุนฺนิวตฺถทุปฺปารุตทสฺสเนน` → ต้องมี chain 4 steps
+  - `โอโลเกนฺติ` → ต้องเห็น context "เช่น พุทฺธา..." + etymology มี โอ บทหน้า
+  - `ทสฺสติ` → vibhatti chip "สฺสติ"
