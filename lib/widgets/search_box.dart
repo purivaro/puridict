@@ -102,12 +102,9 @@ class _SearchBoxState extends State<SearchBox> {
                         child: TextField(
                           controller: _controller,
                           focusNode: _focusNode,
-                          // จัดการกับ cursor และการแสดงผลภาษาไทย
                           textDirection: TextDirection.ltr,
                           textAlign: TextAlign.left,
-                          // ปิดคุณสมบัติที่อาจรบกวนการพิมพ์ภาษาไทย
-                          autocorrect: false,
-                          enableSuggestions: false,
+                          keyboardType: TextInputType.text,
                           onChanged: (value) {
                             // เก็บตำแหน่ง cursor ปัจจุบัน
                             final cursorPos = _controller.selection.base.offset;
