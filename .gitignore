@@ -67,3 +67,9 @@ asc-*.png
 splash-test*.png
 emulator-*.png
 reset-*.png
+
+# forms/mungkala .sqlite ดิบ — สร้างจาก repo เว็บ (puripali) ซึ่ง track ตัวจริงอยู่แล้ว
+#   ตัวสร้าง: page/dict/tools/build_forms_sqlite.php · build_mungkala_sqlite.php
+#   ที่นี่เก็บแค่ .gz ที่ bundle ลงแอพจริง จะได้ไม่มี source-of-truth สองที่
+assets/data/forms.sqlite
+assets/data/mungkala.sqlite

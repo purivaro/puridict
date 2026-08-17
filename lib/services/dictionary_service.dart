@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'package:puridict/models/dictionary_entry.dart';
+import 'package:puridict/models/inflected_info.dart';
+import 'package:puridict/models/mungkala_group.dart';
 import 'package:puridict/services/pali_stemmer.dart';
 import 'package:puridict/services/update_service.dart';
 
@@ -18,8 +20,19 @@ class DictionaryService extends ChangeNotifier {
   static const String _assetDbPath = 'assets/data/combined.sqlite.gz';
   static const String _dbFileName = 'combined.sqlite';
 
+  /// ฐานเสริม — คนละไฟล์กับพจนานุกรมโดยเจตนา
+  ///   forms    = สะพานรูปคำผัน (สร้างจาก MySQL — คนละแหล่งกับพจนานุกรมที่มาจาก PDF)
+  ///   mungkala = คลังศัพท์มังคลัตถทีปนี (คนละหนังสือ คนละหน่วยข้อมูล)
+  /// แยกไฟล์ทำให้อัปเดตแต่ละคลังได้อิสระ และไม่กระทบ combined.sqlite ที่ใช้อยู่เดิม
+  static const String _assetFormsPath = 'assets/data/forms.sqlite.gz';
+  static const String _formsFileName = 'forms.sqlite';
+  static const int _assetFormsVersion = 1;
+  static const String _assetMkPath = 'assets/data/mungkala.sqlite.gz';
+  static const String _mkFileName = 'mungkala.sqlite';
+  static const int _assetMkVersion = 1;
+
   /// bump เมื่ออัปเดตไฟล์ dataset ที่ bundle มา (จะ trigger copy ใหม่)
-  static const int _assetDbVersion = 5;
+  static const int _assetDbVersion = 6;
 
   /// throttle: เช็ค manifest อย่างมาก 1 ครั้งต่อช่วงเวลานี้
   static const Duration _checkInterval = Duration(hours: 6);
@@ -28,6 +41,8 @@ class DictionaryService extends ChangeNotifier {
   static const String _kLastCheckAt = 'data_last_check_at';
 
   Database? _db;
+  Database? _formsDb;
+  Database? _mkDb;
 
   DataUpdateStatus _updateStatus = DataUpdateStatus.idle;
   double _updateProgress = 0;
@@ -42,6 +57,10 @@ class DictionaryService extends ChangeNotifier {
   bool _searchPerformed = false;
   bool _showRecentSearches = false;
   String _dictionaryType = 'paliThai';
+  /// เล่มที่ค้น — ทิศทาง (paliThai/thaiPali) ใช้ร่วมกันทั้งสองเล่ม
+  String _book = 'dhammapada';
+  InflectedInfo? _inflected;
+  List<MungkalaGroup> _mungkalaGroups = [];
   String? _error;
   double _fontSize = 1.2;
 
@@ -53,6 +72,9 @@ class DictionaryService extends ChangeNotifier {
   bool get searchPerformed => _searchPerformed;
   bool get showRecentSearches => _showRecentSearches;
   String get dictionaryType => _dictionaryType;
+  String get book => _book;
+  InflectedInfo? get inflected => _inflected;
+  List<MungkalaGroup> get mungkalaGroups => _mungkalaGroups;
   String? get error => _error;
   double get fontSize => _fontSize;
 
@@ -95,30 +117,65 @@ class DictionaryService extends ChangeNotifier {
     }
   }
 
-  Future<Database> _openDb() async {
+  Future<Database> _openDb() =>
+      _openBundledDb(_assetDbPath, _dbFileName, _assetDbVersion);
+
+  /// แตกไฟล์ .sqlite.gz จาก asset ครั้งแรก แล้วเปิดแบบอ่านอย่างเดียว
+  ///
+  /// ทุกคลังใช้ทางเดียวกันหมด (พจนานุกรม · สะพานรูปคำผัน · มังคลัตถทีปนี)
+  /// แต่ละคลังมีไฟล์ .version ของตัวเอง — bump version ของคลังไหน ก็แตกใหม่แค่คลังนั้น
+  /// ไม่ต้องแตะคลังอื่นที่ผู้ใช้มีอยู่แล้ว (ทั้งสามรวมกันแตกแล้วเกือบ 100 MB)
+  Future<Database> _openBundledDb(
+      String assetPath, String fileName, int assetVersion) async {
     final dir = await getApplicationDocumentsDirectory();
-    final dbPath = '${dir.path}/$_dbFileName';
-    final versionFile = File('${dir.path}/$_dbFileName.version');
+    final dbPath = '${dir.path}/$fileName';
+    final versionFile = File('${dir.path}/$fileName.version');
 
     bool needCopy = !await File(dbPath).exists();
     if (!needCopy && await versionFile.exists()) {
       final v = int.tryParse((await versionFile.readAsString()).trim()) ?? 0;
-      if (v != _assetDbVersion) needCopy = true;
+      if (v != assetVersion) needCopy = true;
     } else if (!needCopy) {
       needCopy = true;
     }
 
     if (needCopy) {
-      // ship gzipped (~6.7 MB vs 64 MB raw) — decompress on first run
-      final data = await rootBundle.load(_assetDbPath);
+      // ship gzipped (รวมสามคลัง ~15 MB เทียบ 96 MB ถ้าไม่บีบ) — แตกครั้งแรกที่เปิดแอพ
+      final data = await rootBundle.load(assetPath);
       final bytes =
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       final decoded = await compute(_gunzip, bytes);
       await File(dbPath).writeAsBytes(decoded, flush: true);
-      await versionFile.writeAsString('$_assetDbVersion');
+      await versionFile.writeAsString('$assetVersion');
     }
 
     return openDatabase(dbPath, readOnly: true);
+  }
+
+  /// เปิดคลังเสริมแบบ lazy — ผู้ใช้ที่ไม่เคยค้นคำผันหรือไม่เคยเปิดเล่มมังคลัตถทีปนี
+  /// จะไม่เสียเวลาแตกไฟล์ 15–17 MB ตอนเปิดแอพ
+  /// ล้มเหลวก็คืน null ให้ฟีเจอร์นั้นเงียบไป ไม่ทำให้พจนานุกรมหลักพัง
+  Future<Database?> _ensureFormsDb() async {
+    if (_formsDb != null) return _formsDb;
+    try {
+      _formsDb = await _openBundledDb(
+          _assetFormsPath, _formsFileName, _assetFormsVersion);
+    } catch (e) {
+      debugPrint('_ensureFormsDb error: $e');
+      return null;
+    }
+    return _formsDb;
+  }
+
+  Future<Database?> _ensureMungkalaDb() async {
+    if (_mkDb != null) return _mkDb;
+    try {
+      _mkDb = await _openBundledDb(_assetMkPath, _mkFileName, _assetMkVersion);
+    } catch (e) {
+      debugPrint('_ensureMungkalaDb error: $e');
+      return null;
+    }
+    return _mkDb;
   }
 
   // ─── online dataset updates ──────────────────────────────────
@@ -275,7 +332,30 @@ class DictionaryService extends ChangeNotifier {
     _dictionaryType = type;
     _searchPerformed = false;
     _filteredEntries = [];
+    _inflected = null;
+    _mungkalaGroups = [];
     notifyListeners();
+    // ทิศทางใช้ร่วมกันทั้งสองเล่ม — สลับแล้วยังมีคำค้นอยู่ ให้ค้นซ้ำทันที
+    // ไม่งั้นหน้าจะว่างจนผู้ใช้กดค้นเอง ซึ่งดูเหมือนค้นไม่เจอ
+    if (_searchQuery.trim().isNotEmpty) {
+      // ignore: discarded_futures
+      Future.microtask(performSearch);
+    }
+  }
+
+  /// สลับเล่มที่ค้น — 'dhammapada' (ปทานุกรมธรรมบท) หรือ 'mungkala' (มังคลัตถทีปนี)
+  void changeBook(String book) {
+    if (_book == book) return;
+    _book = book;
+    _searchPerformed = false;
+    _filteredEntries = [];
+    _inflected = null;
+    _mungkalaGroups = [];
+    notifyListeners();
+    if (_searchQuery.trim().isNotEmpty) {
+      // ignore: discarded_futures
+      Future.microtask(performSearch);
+    }
   }
 
   void toggleRecentSearches() {
@@ -390,19 +470,173 @@ class DictionaryService extends ChangeNotifier {
       await prefs.setString('recentSearches', json.encode(_recentSearches));
     }
 
+    _inflected = null;
+    _mungkalaGroups = [];
+
     try {
-      _filteredEntries = _dictionaryType == 'paliThai'
-          ? await _searchPaliToThai(db, query)
-          : await _searchThaiToPali(db, query);
+      if (_book == 'mungkala') {
+        // มังคลัตถทีปนีเป็นคลังแยก ผลลัพธ์เป็นคู่บาลี-คำแปล ไม่ใช่ entries
+        _mungkalaGroups = await _searchMungkala(query);
+        _filteredEntries = [];
+      } else {
+        _filteredEntries = _dictionaryType == 'paliThai'
+            ? await _searchPaliToThai(db, query)
+            : await _searchThaiToPali(db, query);
+        // สะพานรูปคำผัน — ทำเฉพาะฝั่งบาลีและเฉพาะเมื่อคำที่ค้นไม่ใช่ headword เอง
+        // (ถ้าเป็น headword อยู่แล้ว การบอกว่า "เป็นรูปที่ผันแล้ว" จะผิด)
+        if (_dictionaryType == 'paliThai') {
+          _inflected = await _resolveInflected(db, query);
+        }
+      }
     } catch (e) {
       _error = 'ค้นหาไม่สำเร็จ: $e';
       _filteredEntries = [];
+      _mungkalaGroups = [];
     }
 
     _searchPerformed = true;
     _loading = false;
     _showRecentSearches = false;
     notifyListeners();
+  }
+
+  // ─── สะพานรูปคำผัน ───────────────────────────────────────────
+
+  /// คำที่ค้นเป็นรูปที่ผันแล้วของอะไร + หนังสือแปลว่าอะไร
+  ///
+  /// คืน null เมื่อ (ก) คำนั้นเป็น headword ของพจนานุกรมเองอยู่แล้ว — บอกว่า
+  /// "เป็นรูปที่ผันแล้ว" จะผิด · หรือ (ข) คลังไม่รู้จักรูปนี้
+  Future<InflectedInfo?> _resolveInflected(Database db, String query) async {
+    final headword = await db.rawQuery(
+        'SELECT 1 FROM entries WHERE headword = ? LIMIT 1', [query]);
+    if (headword.isNotEmpty) return null;
+
+    final fdb = await _ensureFormsDb();
+    if (fdb == null) return null;
+
+    final readings = await fdb.rawQuery(
+      'SELECT lemma, word_class, vibhatti, vacana, linga, dict_id '
+      'FROM forms WHERE surface = ? ORDER BY is_primary DESC, dict_id IS NULL, rowid',
+      [query],
+    );
+    final glosses = await fdb.rawQuery(
+      'SELECT gloss, n FROM form_glosses WHERE surface = ? ORDER BY n DESC LIMIT 8',
+      [query],
+    );
+    final parts = await fdb.rawQuery(
+      'SELECT part FROM form_parts WHERE surface = ? ORDER BY pos', [query]);
+
+    if (readings.isEmpty && glosses.isEmpty) return null;
+
+    final info = InflectedInfo(
+      surface: query,
+      readings: readings.map(InflectedReading.fromRow).toList(growable: false),
+      glosses: glosses
+          .map((r) => AttestedGloss(
+              (r['gloss'] as String?) ?? '', (r['n'] as num?)?.toInt() ?? 0))
+          .toList(growable: false),
+      parts: parts
+          .map((r) => (r['part'] as String?) ?? '')
+          .where((p) => p.isNotEmpty)
+          .toList(growable: false),
+    );
+    return info.isEmpty ? null : info;
+  }
+
+  // ─── มังคลัตถทีปนี ───────────────────────────────────────────
+
+  /// ค้นคลังมังคลัตถทีปนี — ทิศทางใช้ค่าเดียวกับพจนานุกรม (_dictionaryType)
+  Future<List<MungkalaGroup>> _searchMungkala(String query) async {
+    final mdb = await _ensureMungkalaDb();
+    if (mdb == null) return const [];
+
+    const cols = 'p.pali AS pali, p.thai AS thai, p.seq AS seq, '
+        'b.page AS page, b.kho AS kho, b.kho_title AS kho_title';
+    List<Map<String, Object?>> rows;
+
+    if (_dictionaryType == 'paliThai') {
+      // ค้นรูปคำตรงตัวก่อน (มี index) — ไม่เจอจึงค่อยค้นแบบมีคำนั้นอยู่ในก้อน
+      rows = await mdb.rawQuery(
+        'SELECT $cols FROM words w JOIN pairs p ON p.id = w.pair_id '
+        'JOIN blocks b ON b.block_id = p.block_id '
+        'WHERE w.word = ? ORDER BY b.page, p.seq LIMIT 360',
+        [_bareWord(query)],
+      );
+      if (rows.isEmpty) {
+        rows = await mdb.rawQuery(
+          'SELECT $cols FROM pairs p JOIN blocks b ON b.block_id = p.block_id '
+          'WHERE p.pali LIKE ? ORDER BY b.page, p.seq LIMIT 360',
+          ['%${_bareWord(query)}%'],
+        );
+      }
+    } else {
+      // ค้นจากคำแปลไทยต้องใช้ LIKE ไม่ใช่ FTS — ภาษาไทยไม่มีตัวคั่นคำ
+      // tokenizer unicode61 มองคำไทยติดกันเป็น token เดียว ค้น "มงคล" ด้วย FTS ได้ 2 คู่
+      // ส่วน LIKE ได้ 182 คู่ และเร็วกว่า (สแกน 54,898 แถว ~10 ms)
+      rows = await mdb.rawQuery(
+        'SELECT $cols FROM pairs p JOIN blocks b ON b.block_id = p.block_id '
+        'WHERE p.thai LIKE ? ORDER BY b.page, p.seq LIMIT 360',
+        ['%$query%'],
+      );
+    }
+
+    return _groupMungkala(rows);
+  }
+
+  /// ตัดวงเล็บ/เครื่องหมายออก ให้ตรงกับที่เก็บในตาราง words
+  static String _bareWord(String w) => w
+      .replaceAll(RegExp('[()\\[\\]“”‘’"\'`]'), '')
+      .replaceAll(RegExp(r'^[,;:.ฯ]+|[,;:.ฯ?]+$'), '')
+      .trim();
+
+  /// รวมคู่ที่เหมือนกัน แล้วเรียงตามความถี่
+  ///
+  /// คีย์ต้องตัดเครื่องหมายหัว-ท้ายออกก่อน ไม่งั้น "ซึ่งมงคล" · "ซึ่งมงคล," ·
+  /// "ซึ่งมงคล”" จะแยกเป็นสามสำนวน ทั้งที่เครื่องหมายมาจากตำแหน่งในประโยค
+  List<MungkalaGroup> _groupMungkala(List<Map<String, Object?>> rows) {
+    String trim(String s) => s
+        .replaceAll(RegExp('^[\\s,;:.ฯ“”‘’"\'`]+'), '')
+        .replaceAll(RegExp('[\\s,;:.ฯ?“”‘’"\'`]+\$'), '');
+
+    final order = <String>[];
+    final counts = <String, int>{};
+    final pali = <String, String>{};
+    final thai = <String, String>{};
+    final hits = <String, List<MungkalaHit>>{};
+
+    for (final r in rows) {
+      final p = trim((r['pali'] as String?) ?? '');
+      final t = trim((r['thai'] as String?) ?? '');
+      if (p.isEmpty || t.isEmpty) continue;
+      final key = '$p\u001f$t';
+      if (!counts.containsKey(key)) {
+        order.add(key);
+        counts[key] = 0;
+        pali[key] = p;
+        thai[key] = t;
+        hits[key] = [];
+      }
+      counts[key] = counts[key]! + 1;
+      if (hits[key]!.length < 12) {
+        hits[key]!.add(MungkalaHit(
+          page: (r['page'] as num?)?.toInt() ?? 0,
+          kho: (r['kho'] as num?)?.toInt(),
+          khoTitle: r['kho_title'] as String?,
+        ));
+      }
+    }
+
+    final out = order
+        .map((k) => MungkalaGroup(
+              pali: pali[k]!,
+              thai: thai[k]!,
+              count: counts[k]!,
+              hits: hits[k]!,
+            ))
+        .toList();
+    // สำนวนที่หนังสือใช้ซ้ำบ่อย = สำนวนหลักของคำนั้น ให้ขึ้นก่อน
+    out.sort((a, b) => b.count.compareTo(a.count));
+    return out.length > 60 ? out.sublist(0, 60) : out;
   }
 
   Future<List<DictionaryEntry>> _searchPaliToThai(

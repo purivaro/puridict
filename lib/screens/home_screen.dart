@@ -8,6 +8,8 @@ import 'package:puridict/widgets/dictionary_card.dart';
 import 'package:puridict/widgets/favorites_section.dart';
 import 'package:puridict/widgets/loading_skeleton.dart';
 import 'package:puridict/widgets/search_box.dart';
+import 'package:puridict/widgets/inflected_banner.dart';
+import 'package:puridict/widgets/mungkala_card.dart';
 import 'package:puridict/widgets/recent_searches.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -225,8 +227,20 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
+      // เรียงแบบเดียวกับเว็บ: [ธรรมบท] [บาลี-ไทย] [ไทย-บาลี] [มังคลัตถทีปนี]
+      // ปุ่มเล่มขนาบสองข้าง สวิตช์ทิศทางอยู่กลางเพราะใช้ร่วมกันทั้งสองเล่ม
       child: Row(
         children: [
+          Expanded(
+            child: _buildTypeButton(
+              context,
+              title: 'ธรรมบท',
+              icon: Icons.menu_book,
+              isSelected: service.book == 'dhammapada',
+              onTap: () => service.changeBook('dhammapada'),
+              activeColors: _bookColors,
+            ),
+          ),
           Expanded(
             child: _buildTypeButton(
               context,
@@ -245,10 +259,23 @@ class HomeScreen extends StatelessWidget {
               onTap: () => service.changeDictionaryType('thaiPali'),
             ),
           ),
+          Expanded(
+            child: _buildTypeButton(
+              context,
+              title: 'มังคลัตถ',
+              icon: Icons.auto_stories,
+              isSelected: service.book == 'mungkala',
+              onTap: () => service.changeBook('mungkala'),
+              activeColors: _bookColors,
+            ),
+          ),
         ],
       ),
     );
   }
+
+  /// สีปุ่มเลือกเล่ม — โทนเดียวกับฝั่งเว็บ (--pd-book #047857) ให้สองแพลตฟอร์มอ่านเหมือนกัน
+  static const List<Color> _bookColors = [Color(0xFF065F46), Color(0xFF047857)];
 
   Widget _buildTypeButton(
     BuildContext context, {
@@ -256,6 +283,9 @@ class HomeScreen extends StatelessWidget {
     required IconData icon,
     required bool isSelected,
     required VoidCallback onTap,
+    // ปุ่มเลือกเล่มใช้เขียว ปุ่มเลือกทิศทางใช้น้ำเงินเดิม — แถบเดียวมีสองเรื่องอยู่ในนั้น
+    // และปุ่มสว่างพร้อมกันได้สองปุ่ม ถ้าสีเดียวกันหมดจะดูเหมือนเลือกซ้อนกันผิด
+    List<Color>? activeColors,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
@@ -270,16 +300,17 @@ class HomeScreen extends StatelessWidget {
               ? LinearGradient(
                   begin: const Alignment(-1.0, -0.4),
                   end: const Alignment(1.0, 1.0),
-                  colors: isDark
-                      ? const [
-                          Color(0xFF1E3A8A),
-                          Color(0xFF2851B8),
-                        ]
-                      : const [
-                          Color(0xFF1E3A8A),
-                          Color(0xFF2851B8),
-                          Color(0xFF3B6FE0),
-                        ],
+                  colors: activeColors ??
+                      (isDark
+                          ? const [
+                              Color(0xFF1E3A8A),
+                              Color(0xFF2851B8),
+                            ]
+                          : const [
+                              Color(0xFF1E3A8A),
+                              Color(0xFF2851B8),
+                              Color(0xFF3B6FE0),
+                            ]),
                 )
               : null,
           color: isSelected ? null : Colors.transparent,
@@ -287,7 +318,8 @@ class HomeScreen extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: const Color(0xFF1E3A8A).withOpacity(0.3),
+                    color: (activeColors?.first ?? const Color(0xFF1E3A8A))
+                        .withOpacity(0.3),
                     blurRadius: 10,
                     spreadRadius: -2,
                     offset: const Offset(0, 4),
@@ -369,6 +401,10 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildResultsSection(BuildContext context, DictionaryService service) {
+    // เล่มมังคลัตถทีปนีมีรูปผลลัพธ์ของตัวเอง (คู่บาลี-คำแปล) ไม่ใช่ entries
+    if (service.book == 'mungkala') {
+      return _buildMungkalaSection(context, service);
+    }
     if (service.filteredEntries.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16), // ปรับค่านี้ให้เหมือนกับใน search_box
@@ -489,11 +525,70 @@ class HomeScreen extends StatelessWidget {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
-              children: service.filteredEntries.map((entry) => DictionaryCard(
-                entry: entry,
-                isTopResult: service.filteredEntries.indexOf(entry) == 0,
-                fontSize: service.fontSize,
-              )).toList(),
+              children: [
+                // สะพานรูปคำผัน — ขึ้นเหนือผล เพราะเป็นข้อสรุปว่าทำไมได้คำอื่น
+                if (service.inflected != null)
+                  InflectedBanner(info: service.inflected!),
+                ...service.filteredEntries.map((entry) => DictionaryCard(
+                      entry: entry,
+                      isTopResult:
+                          service.filteredEntries.indexOf(entry) == 0,
+                      fontSize: service.fontSize,
+                    )),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// หน้าผลของเล่มมังคลัตถทีปนี — คู่บาลี-คำแปล + ที่พบในหนังสือ
+  Widget _buildMungkalaSection(BuildContext context, DictionaryService service) {
+    final groups = service.mungkalaGroups;
+    final muted = Theme.of(context).brightness == Brightness.dark
+        ? AppTheme.darkTextLightColor
+        : AppTheme.lightTextLightColor;
+
+    if (groups.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.search_off, size: 40, color: muted),
+              const SizedBox(height: 10),
+              Text('ไม่พบ "${service.searchQuery}" ในมังคลัตถทีปนี',
+                  textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+          child: Text(
+            'พบ ${groups.length} สำนวน จากมังคลัตถทีปนี',
+            style: TextStyle(fontSize: 12.5, color: muted),
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: groups
+                  .map((g) => MungkalaCard(group: g, fontSize: service.fontSize))
+                  .toList(growable: false),
             ),
           ),
         ),
