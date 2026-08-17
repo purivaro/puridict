@@ -586,6 +586,9 @@ class HomeScreen extends StatelessWidget {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
+              // ต้อง stretch — ไม่งั้นการ์ดกว้างตามเนื้อหาแล้วถูกจัดกลาง
+              // ทำให้เรียงเยื้องกันเป็นขั้นบันได (เห็นจากภาพหน้าจอซิมูเลเตอร์)
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: groups
                   .map((g) => MungkalaCard(group: g, fontSize: service.fontSize))
                   .toList(growable: false),

@@ -100,7 +100,15 @@ class DictionaryService extends ChangeNotifier {
     Future.microtask(checkForUpdates);
   }
 
-  Future<void> loadDictionary() async {
+  /// Future ของการเปิดฐานครั้งแรก — performSearch รอตัวนี้ได้
+  /// เปิดครั้งแรกหลังอัปเดตต้องแตก combined.sqlite 64 MB ใช้เวลาหลายวินาที
+  Future<void>? _dbReady;
+
+  Future<void> loadDictionary() {
+    return _dbReady ??= _loadDictionaryOnce();
+  }
+
+  Future<void> _loadDictionaryOnce() async {
     try {
       _loading = true;
       _error = null;
@@ -448,6 +456,14 @@ class DictionaryService extends ChangeNotifier {
     if (_searchQuery.trim().isEmpty) {
       clearSearch();
       return;
+    }
+    // ฐานยังแตกไฟล์ไม่เสร็จ → รอให้เสร็จก่อน อย่าเด้ง error ใส่ผู้ใช้
+    // (พบจากการรันซิมูเลเตอร์: เปิดแอพครั้งแรกหลังอัปเดตแล้วพิมพ์ค้นทันที
+    //  จะขึ้น "ฐานข้อมูลยังไม่พร้อม" ทั้งที่แค่ยังโหลดไม่เสร็จ)
+    if (_db == null) {
+      _loading = true;
+      notifyListeners();
+      await loadDictionary();
     }
     final db = _db;
     if (db == null) {

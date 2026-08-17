@@ -26,6 +26,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # ขับ UI จริงบนเครื่อง/ซิมูเลเตอร์ — ใช้ยืนยันว่าค้นหาแล้วได้ผลจริง
+  # ไม่ใช่แค่ compile ผ่าน (AppleScript คลิกซิมูเลเตอร์ไม่น่าเชื่อถือ)
+  integration_test:
+    sdk: flutter
   flutter_lints: ^2.0.0
   flutter_launcher_icons: ^0.13.1
   flutter_native_splash: ^2.4.5
