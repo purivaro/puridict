@@ -26,7 +26,10 @@ class DictionaryService extends ChangeNotifier {
   /// แยกไฟล์ทำให้อัปเดตแต่ละคลังได้อิสระ และไม่กระทบ combined.sqlite ที่ใช้อยู่เดิม
   static const String _assetFormsPath = 'assets/data/forms.sqlite.gz';
   static const String _formsFileName = 'forms.sqlite';
-  static const int _assetFormsVersion = 1;
+  /// 2 = ข้อมูล 19 ส.ค. 2569 — ซ่อมคำแปลที่ยกจากหนังสือ 2 ชิ้น
+  ///     (เลื่อมใน→เลื่อมใส · ภควนฺตํ: ซึ่งพระศาสดา→ซึ่งพระผู้มีพระภาคเจ้า)
+  /// เวอร์ชันแยกต่อคลัง จึงแตกไฟล์ใหม่แค่ forms (4 MB) ไม่ต้องแตะ combined (64 MB)
+  static const int _assetFormsVersion = 2;
   static const String _assetMkPath = 'assets/data/mungkala.sqlite.gz';
   static const String _mkFileName = 'mungkala.sqlite';
   static const int _assetMkVersion = 1;

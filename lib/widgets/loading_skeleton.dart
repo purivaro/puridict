@@ -6,11 +6,23 @@ class LoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildSkeletonCard(context),
-        _buildSkeletonCard(context),
-      ],
+    // ห่อด้วย SingleChildScrollView เพื่อปลดข้อจำกัดความสูงให้ Column
+    //
+    // การ์ดโครงร่าง 2 ใบสูงรวม ~372 px แต่เมื่อคีย์บอร์ดเปิดบนจอ 1080x2400 (420dpi)
+    // พื้นที่ของ Expanded เหลือ ~335 px → RenderFlex ล้น 37 px เนื้อหาถูกตัด
+    // และ Flutter ฟ้อง "RenderFlex overflowed by 37 pixels"
+    // (ยืนยันด้วยการดักตอนเกิดบน emulator Android 16 — creator chain ชี้มาที่นี่)
+    //
+    // NeverScrollableScrollPhysics เพราะนี่เป็นภาพชั่วคราวระหว่างค้น ไม่ต้องให้เลื่อน
+    // แค่ต้องไม่ล้นและไม่ฟ้อง error
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        children: [
+          _buildSkeletonCard(context),
+          _buildSkeletonCard(context),
+        ],
+      ),
     );
   }
 

@@ -31,10 +31,28 @@ void main() {
   }
 
   Future<void> search(WidgetTester tester, String word) async {
+    // ต้องแตะช่องค้นหาก่อนพิมพ์ทุกครั้ง — เหมือนที่ผู้ใช้จริงทำ
+    //
+    // ถ้าช่องไม่มี focus (เช่น การค้นครั้งก่อนปิดแป้นพิมพ์ไปแล้ว) enterText
+    // จะไม่เข้าเงียบ ๆ ช่องยังเป็นคำเก่า แล้วเทสต์ก็ค้นคำเก่าโดยไม่มีใครรู้
+    // (เคยหลงคิดว่าแอพมีบั๊ก "สลับเล่มแล้วพิมพ์ไม่เข้า" ทั้งที่เป็นอาการของเทสต์เอง —
+    //  วัดแล้ว: ไม่แตะก่อน focus=false พิมพ์ไม่เข้า · แตะก่อน focus=true พิมพ์เข้าปกติ)
+    await tester.tap(find.byType(TextField).first);
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.enterText(find.byType(TextField).first, word);
     await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('ค้นหา').first);
     for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    // ปิดคีย์บอร์ดทุกครั้งหลังค้น
+    //
+    // แต่ละ testWidgets เรียก app.main() ใหม่ในโปรเซสเดิม แต่ "คีย์บอร์ดจริง"
+    // ของเครื่องไม่ได้ถูกปิดตามไปด้วย → เทสต์ตัวถัดไปเริ่มด้วยพื้นที่เหลือแค่ ~350 px
+    // แล้วการ์ดผลลัพธ์ล้นขอบ 37 px ทำให้เทสต์ล้มโดยที่แอพไม่ได้ผิดอะไร
+    // (พิสูจน์แล้ว: รันเทสต์ที่ล้มนั้นเดี่ยว ๆ ผ่านสบาย ไม่มี overflow เลย)
+    FocusManager.instance.primaryFocus?.unfocus();
+    for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 250));
     }
   }
