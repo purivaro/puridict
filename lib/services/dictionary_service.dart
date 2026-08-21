@@ -31,13 +31,13 @@ class DictionaryService extends ChangeNotifier {
   ///     กับข้อความของศัพท์ข้างเคียงที่ติดมา · ดู puripali gloss-align/fix_broken_gloss.php
   /// 2 = ซ่อม 2 ชิ้น (เลื่อมใน→เลื่อมใส · ภควนฺตํ: ซึ่งพระศาสดา→ซึ่งพระผู้มีพระภาคเจ้า)
   /// เวอร์ชันแยกต่อคลัง จึงแตกไฟล์ใหม่แค่ forms (4 MB) ไม่ต้องแตะ combined (64 MB)
-  static const int _assetFormsVersion = 3;
+  static const int _assetFormsVersion = 4;
   static const String _assetMkPath = 'assets/data/mungkala.sqlite.gz';
   static const String _mkFileName = 'mungkala.sqlite';
   static const int _assetMkVersion = 1;
 
   /// bump เมื่ออัปเดตไฟล์ dataset ที่ bundle มา (จะ trigger copy ใหม่)
-  static const int _assetDbVersion = 6;
+  static const int _assetDbVersion = 7;
 
   /// throttle: เช็ค manifest อย่างมาก 1 ครั้งต่อช่วงเวลานี้
   static const Duration _checkInterval = Duration(hours: 6);
