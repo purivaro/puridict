@@ -173,6 +173,9 @@ cd <puridict> && gzip -9 -k -f assets/data/forms.sqlite
 
 ### iOS
 - [ ] `flutter build ipa --release`
+      ถ้าขึ้น "No signing certificate 'iOS Distribution' found / No Accounts"
+      = Xcode ในเครื่องยังไม่ได้ login Apple Developer — archive สร้างเสร็จแล้วที่
+      `build/ios/archive/Runner.xcarchive` เปิด Xcode → Organizer → Distribute App ต่อได้เลย
 - [ ] Upload ผ่าน Transporter
 - [ ] ทดสอบ TestFlight
 - [ ] ASC > Version > metadata + screenshots + age rating
@@ -181,6 +184,11 @@ cd <puridict> && gzip -9 -k -f assets/data/forms.sqlite
 ### Android
 - [ ] รอ upload key active (ครั้งแรก หรือหลัง reset)
 - [ ] `flutter build appbundle --release`
+      ⚠️ เครื่องนี้จะขึ้น "failed to strip debug symbols" แล้ว exit 1 **ทั้งที่ไฟล์ถูกต้อง** —
+      gradle task `stripReleaseDebugSymbols` ทำงานผ่าน (ตรวจแล้ว .so ใน .aab ไม่มี
+      `.debug_*`/`.symtab` เลย) เป็นการตรวจซ้ำของ flutter_tools ที่ล้มเพราะ
+      `cmdline-tools` ใน Android SDK หายไป (เห็นใน `flutter doctor`)
+      ใช้ .aab ต่อได้เลย หรือจะติดตั้ง cmdline-tools ให้ข้อความหายไปก็ได้
 - [ ] Play Console > Internal testing > upload .aab
 - [ ] ทดสอบ
 - [ ] Promote to Production
