@@ -20,10 +20,13 @@
 
 ## 2. Version & Build
 
-- **Version (Marketing):** `2.0.0`
-- **Build (iOS `CURRENT_PROJECT_VERSION`):** `8`
-- **Build (Android `versionCode`):** `8` (จาก `pubspec.yaml` field `+8`)
-- **pubspec:** `version: 2.0.0+8`
+| รุ่น | pubspec | สถานะ |
+|---|---|---|
+| 2.0.0+8 | `2.0.0+8` | release แรก (พ.ค. 2569) |
+| 2.0.1+11 | `2.0.1+11` | ส่งสโตร์ 14 พ.ค. 2569 — รุ่นที่อยู่บนสโตร์ตอนนี้ |
+| 2.2.0+13 | `2.2.0+13` | ข้อมูล 22 ส.ค. 2569 + ท่ออัปเดตข้อมูลออนไลน์ครบ 3 คลัง |
+
+iOS `CURRENT_PROJECT_VERSION` / Android `versionCode` มาจากเลขหลัง `+` ใน `pubspec.yaml`
 
 ---
 
