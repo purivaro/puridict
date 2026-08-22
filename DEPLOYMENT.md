@@ -97,12 +97,61 @@ Upload ที่ Play Console > Test and release > Internal testing > Create new
 
 ## 6. Online Data Update System
 
-- ไฟล์ data ที่ bundle: `assets/data/combined.sqlite.gz` (~6.9 MB)
-- Asset DB version: `_assetDbVersion = 5` ใน `lib/services/dictionary_service.dart`
-  (bump เมื่อแก้ไฟล์ `combined.sqlite` แล้ว rerun `gzip -9 -k -f combined.sqlite`)
-- Online manifest hosted on: **GitHub Releases** (repo: `purivaro/puridict`)
-- Manifest URL: `https://github.com/purivaro/puridict/releases/latest/download/manifest.json`
-- Release script: `./scripts/release-data.sh <version>` (ต้องใช้ `gh` CLI)
+แก้ "ข้อมูล" (คำแปล/พจนานุกรม) ส่งถึงเครื่องผู้ใช้ได้เลย ไม่ต้องรอรีวิวสโตร์
+ส่วนแก้ "โค้ด" ยังต้องออก build ใหม่ตามปกติ
+
+### คลังข้อมูล 3 คลัง (แยกไฟล์ อัปเดตอิสระต่อกัน)
+
+| คลัง | ไฟล์ที่ bundle | ที่มา | อัปเดตบ่อย |
+|---|---|---|---|
+| `combined` | `assets/data/combined.sqlite.gz` (~7 MB) | PDF พจนานุกรมวัดพระราม ๙ | นาน ๆ ครั้ง |
+| `forms` | `assets/data/forms.sqlite.gz` (~4 MB) | MySQL ฝั่งเว็บ (`build_forms_sqlite.php`) | บ่อยสุด |
+| `mungkala` | `assets/data/mungkala.sqlite.gz` (~4 MB) | MySQL `pali.mungkala` | นาน ๆ ครั้ง |
+
+นิยามอยู่ที่ `_dsCombined` / `_dsForms` / `_dsMungkala` ใน
+[`lib/services/dictionary_service.dart`](lib/services/dictionary_service.dart)
+— แต่ละคลังมี `assetVersion` (bump เมื่อไฟล์ใน bundle เปลี่ยน) และ
+`assetDate` (วันที่ของข้อมูลชุดนั้น ใช้กันไม่ให้โหลด release เก่ากว่ามาทับ)
+
+### manifest.json
+
+- host บน **GitHub Releases** repo `purivaro/puridict`
+- URL: `https://github.com/purivaro/puridict/releases/latest/download/manifest.json`
+- เป็น **แบบสะสม** — ต้องมีครบทุกคลังเสมอ เพราะแอพอ่าน `releases/latest` ไฟล์เดียว
+  (`release-data.sh` ดึงของเดิมมารวมให้อัตโนมัติ)
+- ฟิลด์ระดับบนสุดคือคลัง `combined` ไว้ให้แอพรุ่นเก่า (≤ 2.1.0) ที่อ่าน manifest แบบคลังเดียว
+
+### ปล่อยข้อมูลชุดใหม่
+
+```bash
+# 1. สร้างไฟล์ใหม่ฝั่งเว็บ (repo puripali)
+php page/dict/tools/build_forms_sqlite.php
+
+# 2. copy มาที่แอพ + บีบไฟล์
+cp page/dict/data/combined/forms.sqlite  <puridict>/assets/data/
+cd <puridict> && gzip -9 -k -f assets/data/forms.sqlite
+
+# 3. bump _dsForms.assetVersion + assetDate ใน dictionary_service.dart แล้ว commit
+
+# 4. ปล่อยให้เครื่องที่ติดตั้งแล้วโหลดไปใช้
+./scripts/release-data.sh forms
+```
+
+`release-data.sh` ตรวจไฟล์ก่อนปล่อยทุกครั้ง (`quick_check` + นับแถว + เทียบ `.gz` กับ `.sqlite`)
+
+### ความปลอดภัยตอนอัปเดต (ฝั่งแอพ)
+
+ลำดับ: โหลด → เทียบ sha256 → คลายไฟล์ → **เปิดตรวจก่อนสลับ** (`quick_check` + probe)
+→ ปิดของเดิม rename เป็น `.bak` → สลับของใหม่เข้ามา → เปิดตรวจอีกรอบ → ลบ `.bak`
+
+- พังตรงไหนก็ตาม → คืน `.bak` กลับมาแล้วเปิดใช้ต่อทันที (ผู้ใช้ไม่รู้สึกอะไร)
+- คืนไม่ได้จริง ๆ → แตกใหม่จากไฟล์ที่ bundle มากับแอพ
+- แอพดับกลางคันตอนสลับ → เปิดแอพครั้งหน้าเจอ `.bak` แล้วกู้ให้เอง
+- ไม่ยอมถอยหลัง: โหลดเฉพาะเมื่อ `manifest.version > เวอร์ชันที่ใช้อยู่` (เทียบสตริงวันที่)
+- คลังเสริม (`forms` / `mungkala`) ที่ผู้ใช้ยังไม่เคยเปิด จะยังไม่โหลด — ประหยัดเน็ต
+
+ผู้ใช้กดตรวจเองได้ที่ **หน้าเกี่ยวกับแอพ → ข้อมูลในเครื่อง → ตรวจอัปเดต**
+(ปกติแอพเช็คเองอย่างมาก 1 ครั้ง / 6 ชั่วโมง)
 
 ---
 
@@ -110,10 +159,13 @@ Upload ที่ Play Console > Test and release > Internal testing > Create new
 
 ### ก่อน build
 - [ ] bump `pubspec.yaml` version ถ้ามีการเปลี่ยนแปลง
-- [ ] bump `_assetDbVersion` ถ้าแก้ DB
-- [ ] `gzip -9 -k -f assets/data/combined.sqlite` ถ้ามีการแก้ DB
+- [ ] bump `assetVersion` + `assetDate` ของคลังที่แก้ (`_dsCombined` / `_dsForms` / `_dsMungkala`)
+- [ ] `gzip -9 -k -f assets/data/<คลัง>.sqlite` ถ้ามีการแก้ DB
 - [ ] `flutter analyze` ผ่าน
-- [ ] `flutter test` ผ่าน (ถ้ามี test)
+- [ ] `flutter test` ผ่าน
+- [ ] `flutter test integration_test/search_flow_test.dart -d <sim>` ผ่าน
+- [ ] `flutter test integration_test/data_update_test.dart -d <sim> --dart-define=DATA_MANIFEST_URL=http://127.0.0.1:8099/manifest.json` ผ่าน
+      (ตรวจท่ออัปเดต: ของดีต้องทับได้ · ของเสียต้องคืนของเดิม)
 - [ ] ทดสอบในเครื่องจริง อย่างน้อย iPhone + Android
 
 ### iOS

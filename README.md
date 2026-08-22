@@ -82,7 +82,8 @@
 - **`DictionaryService`** ([lib/services/dictionary_service.dart](lib/services/dictionary_service.dart))
   ตัวกลางจัดการฐานข้อมูล, การค้นหา, รายการโปรด, ธีม, และ flow การอัพเดทข้อมูลออนไลน์
 - **`UpdateService`** ([lib/services/update_service.dart](lib/services/update_service.dart))
-  เช็ค `manifest.json` จาก GitHub Releases, ดาวน์โหลดและตรวจ SHA-256, สลับไฟล์ฐานข้อมูลแบบ atomic
+  เช็ค `manifest.json` จาก GitHub Releases (หลายคลังในไฟล์เดียว), ดาวน์โหลดและตรวจ SHA-256
+  ส่วนการสลับไฟล์แบบกู้คืนได้อยู่ใน `DictionaryService._applyUpdate`
 - **Compression strategy** — บันเดิล sqlite แบบ gzip (~6.5 MB) แทน raw (~63 MB) เพื่อลดขนาด APK กว่า **90%**
 - **Offline-first** — แอปใช้งานได้ทันทีตั้งแต่ติดตั้ง การอัพเดทเป็นแบบ background ไม่รบกวนผู้ใช้
 
@@ -95,18 +96,23 @@
 **ฝั่งผู้ใช้:**
 1. เปิดแอป → ใช้ฐานข้อมูลในเครื่องทันที
 2. หลัง UI พร้อม → background fetch `manifest.json` จาก GitHub Releases
-3. ถ้ามี version ใหม่ → แสดง banner นุ่มนวล "กำลังอัพเดทคำศัพท์..."
-4. ดาวน์โหลด → verify SHA-256 → swap ไฟล์ → ใช้ข้อมูลใหม่ทันที
-5. Throttle: เช็คมากที่สุด 1 ครั้ง / 6 ชั่วโมง
+3. คลังไหนมีชุดใหม่กว่า → แสดง banner นุ่มนวล "กำลังอัพเดทคำศัพท์..."
+4. ดาวน์โหลด → verify SHA-256 → **เปิดตรวจก่อนสลับ** → สำรองของเดิมเป็น `.bak` → สลับ → ลบ `.bak`
+5. ล้มเหลวขั้นไหนก็คืนข้อมูลชุดเดิมอัตโนมัติ (สุดท้ายถอยไปใช้ชุดที่ bundle มากับแอพ)
+6. Throttle: เช็คมากที่สุด 1 ครั้ง / 6 ชั่วโมง · กดตรวจเองได้ที่หน้าเกี่ยวกับแอพ
 
 **ฝั่งผู้พัฒนา:**
 
 ```bash
-# แก้ไข assets/data/combined.sqlite แล้วรัน
-./scripts/release-data.sh 2026.05.10
+# copy .sqlite ชุดใหม่มาที่ assets/data/ + gzip -9 -k -f
+# bump assetVersion/assetDate ของคลังนั้นใน dictionary_service.dart แล้ว
+./scripts/release-data.sh forms            # หรือ combined / mungkala
 ```
 
-สคริปต์จะ gzip → คำนวน sha256 → สร้าง `manifest.json` → ดัน GitHub Release ผ่าน `gh` CLI
+สคริปต์จะตรวจไฟล์ (`quick_check` + นับแถว) → gzip → คำนวน sha256
+→ รวมกับ `manifest.json` ของ release เดิม → ดัน GitHub Release ผ่าน `gh` CLI
+
+รายละเอียดทั้งหมดอยู่ใน [DEPLOYMENT.md § 6](DEPLOYMENT.md)
 
 ---
 

@@ -17,33 +17,60 @@ import 'package:puridict/services/update_service.dart';
 enum DataUpdateStatus { idle, checking, downloading, applied, error }
 
 class DictionaryService extends ChangeNotifier {
-  static const String _assetDbPath = 'assets/data/combined.sqlite.gz';
-  static const String _dbFileName = 'combined.sqlite';
+  /// ─── คลังข้อมูล ───────────────────────────────────────────────
+  ///
+  /// สามคลังแยกไฟล์กันโดยเจตนา (คนละแหล่ง คนละหน่วยข้อมูล) จึงอัปเดตทีละคลังได้
+  /// ไม่ต้องขน combined 64 MB ทุกครั้งที่แก้คำแปลไม่กี่คำใน forms
+  ///
+  ///   combined = พจนานุกรม — มาจาก PDF วัดพระราม ๙
+  ///   forms    = สะพานรูปคำผัน — สร้างจาก MySQL ฝั่งเว็บ (แก้บ่อยที่สุด)
+  ///   mungkala = คลังศัพท์มังคลัตถทีปนี — คนละหนังสือ
+  ///
+  /// assetVersion  bump เมื่อไฟล์ที่ bundle มากับแอพเปลี่ยน → แอพแตกไฟล์ใหม่ทับของเดิม
+  /// assetDate     วันที่ของข้อมูลที่ bundle มา — กันไม่ให้โหลด release ที่เก่ากว่าลงมาทับ
+  /// lazy          คลังเสริมที่แตกไฟล์ต่อเมื่อผู้ใช้เปิดใช้จริง
+  static const _Dataset _dsCombined = _Dataset(
+    key: 'combined',
+    assetPath: 'assets/data/combined.sqlite.gz',
+    fileName: 'combined.sqlite',
+    assetVersion: 7,
+    assetDate: '2026.08.20',
+    probeSql: 'SELECT count(*) FROM (SELECT 1 FROM entries LIMIT 1)',
+    lazy: false,
+  );
 
-  /// ฐานเสริม — คนละไฟล์กับพจนานุกรมโดยเจตนา
-  ///   forms    = สะพานรูปคำผัน (สร้างจาก MySQL — คนละแหล่งกับพจนานุกรมที่มาจาก PDF)
-  ///   mungkala = คลังศัพท์มังคลัตถทีปนี (คนละหนังสือ คนละหน่วยข้อมูล)
-  /// แยกไฟล์ทำให้อัปเดตแต่ละคลังได้อิสระ และไม่กระทบ combined.sqlite ที่ใช้อยู่เดิม
-  static const String _assetFormsPath = 'assets/data/forms.sqlite.gz';
-  static const String _formsFileName = 'forms.sqlite';
-  /// 3 = ข้อมูล 19 ส.ค. 2569 (รอบสอง) — ซ่อมคำแปลยกศัพท์ที่ "หาไม่เจอในเฉลย" 114 ชิ้น
-  ///     ส่วนใหญ่เป็นคำ อิติ ที่ตกเครื่องหมายคร่อม (จักไม่กล่าวดังนี้ → จักไม่กล่าว…ดังนี้)
-  ///     กับข้อความของศัพท์ข้างเคียงที่ติดมา · ดู puripali gloss-align/fix_broken_gloss.php
+  /// 4 = ข้อมูล 22 ส.ค. 2569 — สรนฺตา "ระลึกถึงอยู่" (ไม่ใช่ …แล้ว)
+  /// 3 = ซ่อมคำแปลยกศัพท์ที่ "หาไม่เจอในเฉลย" 114 ชิ้น (ส่วนใหญ่คำ อิติ ที่ตกเครื่องหมายคร่อม)
   /// 2 = ซ่อม 2 ชิ้น (เลื่อมใน→เลื่อมใส · ภควนฺตํ: ซึ่งพระศาสดา→ซึ่งพระผู้มีพระภาคเจ้า)
-  /// เวอร์ชันแยกต่อคลัง จึงแตกไฟล์ใหม่แค่ forms (4 MB) ไม่ต้องแตะ combined (64 MB)
-  static const int _assetFormsVersion = 4;
-  static const String _assetMkPath = 'assets/data/mungkala.sqlite.gz';
-  static const String _mkFileName = 'mungkala.sqlite';
-  static const int _assetMkVersion = 1;
+  static const _Dataset _dsForms = _Dataset(
+    key: 'forms',
+    assetPath: 'assets/data/forms.sqlite.gz',
+    fileName: 'forms.sqlite',
+    assetVersion: 4,
+    assetDate: '2026.08.22',
+    probeSql: 'SELECT count(*) FROM (SELECT 1 FROM forms LIMIT 1)',
+    lazy: true,
+  );
 
-  /// bump เมื่ออัปเดตไฟล์ dataset ที่ bundle มา (จะ trigger copy ใหม่)
-  static const int _assetDbVersion = 7;
+  static const _Dataset _dsMungkala = _Dataset(
+    key: 'mungkala',
+    assetPath: 'assets/data/mungkala.sqlite.gz',
+    fileName: 'mungkala.sqlite',
+    assetVersion: 1,
+    assetDate: '2026.08.18',
+    probeSql: 'SELECT count(*) FROM (SELECT 1 FROM pairs LIMIT 1)',
+    lazy: true,
+  );
+
+  static const List<_Dataset> _datasets = [_dsCombined, _dsForms, _dsMungkala];
 
   /// throttle: เช็ค manifest อย่างมาก 1 ครั้งต่อช่วงเวลานี้
   static const Duration _checkInterval = Duration(hours: 6);
 
-  static const String _kRemoteVersion = 'data_remote_version';
   static const String _kLastCheckAt = 'data_last_check_at';
+
+  /// เวอร์ชันข้อมูลที่โหลดออนไลน์มาทับแล้ว — เก็บแยกรายคลัง
+  static String _kDataVersion(_Dataset ds) => 'data_version_${ds.key}';
 
   Database? _db;
   Database? _formsDb;
@@ -53,6 +80,17 @@ class DictionaryService extends ChangeNotifier {
   double _updateProgress = 0;
   String? _newVersion;
   bool _updateBannerDismissed = false;
+  String? _updateError;
+  int _lastCheckAt = 0;
+
+  /// กันเรียกซ้อน — เช็คอัตโนมัติตอนเปิดแอพกับผู้ใช้กดปุ่ม "ตรวจอัปเดต" เอง
+  /// เคยชนกันจริงตอนรันเทสต์: สองรอบโหลดไฟล์เดียวกัน แล้วแย่งกันสลับ/ลบไฟล์ชั่วคราว
+  bool _checking = false;
+
+  /// เวอร์ชันข้อมูลที่ "ใช้อยู่จริง" ของแต่ละคลัง — โชว์ในหน้าเกี่ยวกับแอพ
+  final Map<String, String> _dataVersions = {
+    for (final ds in _datasets) ds.key: ds.assetDate
+  };
 
   List<DictionaryEntry> _filteredEntries = [];
   List<DictionaryEntry> _favorites = [];
@@ -87,6 +125,18 @@ class DictionaryService extends ChangeNotifier {
   double get updateProgress => _updateProgress;
   String? get newVersion => _newVersion;
   bool get updateBannerDismissed => _updateBannerDismissed;
+  String? get updateError => _updateError;
+  Map<String, String> get dataVersions => Map.unmodifiable(_dataVersions);
+  DateTime? get lastCheckedAt => _lastCheckAt == 0
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(_lastCheckAt);
+
+  /// ชื่อคลังที่อ่านออก — ใช้โชว์ในหน้าเกี่ยวกับแอพ
+  static const Map<String, String> datasetLabels = {
+    'combined': 'พจนานุกรมบาลี-ไทย',
+    'forms': 'สะพานรูปคำผัน',
+    'mungkala': 'มังคลัตถทีปนี',
+  };
 
   void dismissUpdateBanner() {
     _updateBannerDismissed = true;
@@ -130,39 +180,86 @@ class DictionaryService extends ChangeNotifier {
     }
   }
 
-  Future<Database> _openDb() =>
-      _openBundledDb(_assetDbPath, _dbFileName, _assetDbVersion);
+  Future<Database> _openDb() => _openBundledDb(_dsCombined);
 
-  /// แตกไฟล์ .sqlite.gz จาก asset ครั้งแรก แล้วเปิดแบบอ่านอย่างเดียว
+  /// เปิดคลังหนึ่งให้พร้อมใช้ — แตกไฟล์จาก asset ถ้าจำเป็น แล้ว "ตรวจก่อนคืน"
   ///
-  /// ทุกคลังใช้ทางเดียวกันหมด (พจนานุกรม · สะพานรูปคำผัน · มังคลัตถทีปนี)
-  /// แต่ละคลังมีไฟล์ .version ของตัวเอง — bump version ของคลังไหน ก็แตกใหม่แค่คลังนั้น
+  /// ลำดับความเชื่อถือ: ไฟล์ที่ใช้อยู่ (อาจโหลดออนไลน์มาทับ) → ของสำรอง `.bak`
+  /// → ไฟล์ที่ bundle มากับแอพ (เชื่อได้เสมอ เพราะติดมาในตัวแอพ)
+  /// อัปเดตออนไลน์ดับกลางคันหรือไฟล์เสีย แอพจึงยังเปิดค้นได้เหมือนเดิม
+  ///
+  /// แต่ละคลังมีไฟล์ `.version` ของตัวเอง — bump assetVersion ของคลังไหน ก็แตกใหม่แค่คลังนั้น
   /// ไม่ต้องแตะคลังอื่นที่ผู้ใช้มีอยู่แล้ว (ทั้งสามรวมกันแตกแล้วเกือบ 100 MB)
-  Future<Database> _openBundledDb(
-      String assetPath, String fileName, int assetVersion) async {
+  Future<Database> _openBundledDb(_Dataset ds) async {
     final dir = await getApplicationDocumentsDirectory();
-    final dbPath = '${dir.path}/$fileName';
-    final versionFile = File('${dir.path}/$fileName.version');
+    final dbPath = '${dir.path}/${ds.fileName}';
+    final bakPath = '$dbPath.bak';
 
-    bool needCopy = !await File(dbPath).exists();
-    if (!needCopy && await versionFile.exists()) {
-      final v = int.tryParse((await versionFile.readAsString()).trim()) ?? 0;
-      if (v != assetVersion) needCopy = true;
-    } else if (!needCopy) {
-      needCopy = true;
+    // อัปเดตรอบก่อนดับตอนกำลังสลับไฟล์ → เอาของสำรองกลับมาก่อน
+    if (!await File(dbPath).exists() && await File(bakPath).exists()) {
+      await File(bakPath).rename(dbPath);
+      debugPrint('${ds.fileName}: กู้จากไฟล์สำรอง .bak');
     }
 
-    if (needCopy) {
-      // ship gzipped (รวมสามคลัง ~15 MB เทียบ 96 MB ถ้าไม่บีบ) — แตกครั้งแรกที่เปิดแอพ
-      final data = await rootBundle.load(assetPath);
-      final bytes =
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      final decoded = await compute(_gunzip, bytes);
-      await File(dbPath).writeAsBytes(decoded, flush: true);
-      await versionFile.writeAsString('$assetVersion');
+    var needCopy = !await File(dbPath).exists();
+    if (!needCopy) {
+      final f = File('$dbPath.version');
+      final txt = await f.exists() ? (await f.readAsString()).trim() : '';
+      // ไฟล์ใน bundle เป็นชุดใหม่ (หรือไม่รู้ที่มา) → แตกทับ
+      needCopy = int.tryParse(txt) != ds.assetVersion;
     }
+    if (needCopy) await _restoreFromAsset(ds, dbPath);
 
-    return openDatabase(dbPath, readOnly: true);
+    try {
+      return await _openVerified(dbPath, ds.probeSql);
+    } catch (e) {
+      // เปิดไม่ได้/ข้อมูลหาย — ถอยไปใช้ของที่ bundle มา แล้วลองใหม่ครั้งเดียว
+      debugPrint('${ds.fileName} ใช้ไม่ได้ ($e) → แตกใหม่จาก bundle');
+      await _restoreFromAsset(ds, dbPath);
+      return _openVerified(dbPath, ds.probeSql);
+    }
+  }
+
+  /// แตกไฟล์ .sqlite.gz จาก asset ทับของเดิม แล้วลืมเวอร์ชันออนไลน์ทิ้ง
+  /// (ของใน bundle มาจาก build ใหม่กว่าเสมอ ตามวันที่ใน assetDate)
+  Future<void> _restoreFromAsset(_Dataset ds, String dbPath) async {
+    // ship gzipped (รวมสามคลัง ~15 MB เทียบ 96 MB ถ้าไม่บีบ) — แตกครั้งแรกที่เปิดแอพ
+    final data = await rootBundle.load(ds.assetPath);
+    final bytes =
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final decoded = await compute(_gunzip, bytes);
+    await File(dbPath).writeAsBytes(decoded, flush: true);
+    await File('$dbPath.version').writeAsString('${ds.assetVersion}');
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kDataVersion(ds));
+    _dataVersions[ds.key] = ds.assetDate;
+  }
+
+  /// เปิดแบบอ่านอย่างเดียว + ตรวจว่าไฟล์ใช้การได้จริง
+  ///
+  /// [deep] = true ใช้กับไฟล์ที่เพิ่งโหลดมาเท่านั้น — `quick_check` อ่านทั้งไฟล์
+  /// ถ้าทำทุกครั้งที่เปิดแอพจะหน่วงหลายวินาทีเพราะพจนานุกรมใหญ่ 64 MB
+  /// ส่วน probeSql เป็นคำถามที่ตอบได้ทันที (LIMIT 1) จึงตรวจได้ทุกครั้ง
+  ///
+  /// โยน exception ถ้าไม่ผ่าน — ผู้เรียกเป็นคนตัดสินใจว่าจะกู้อย่างไร
+  Future<Database> _openVerified(String path, String probeSql,
+      {bool deep = false}) async {
+    final db = await openDatabase(path, readOnly: true);
+    try {
+      if (deep) {
+        final r = await db.rawQuery('PRAGMA quick_check(1)');
+        final verdict =
+            r.isEmpty ? '' : '${r.first.values.first}'.toLowerCase();
+        if (verdict != 'ok') throw Exception('ไฟล์เสีย (quick_check: $verdict)');
+      }
+      final rows = Sqflite.firstIntValue(await db.rawQuery(probeSql)) ?? 0;
+      if (rows <= 0) throw Exception('ไม่มีข้อมูล ($probeSql)');
+      return db;
+    } catch (_) {
+      await db.close();
+      rethrow;
+    }
   }
 
   /// เปิดคลังเสริมแบบ lazy — ผู้ใช้ที่ไม่เคยค้นคำผันหรือไม่เคยเปิดเล่มมังคลัตถทีปนี
@@ -171,8 +268,7 @@ class DictionaryService extends ChangeNotifier {
   Future<Database?> _ensureFormsDb() async {
     if (_formsDb != null) return _formsDb;
     try {
-      _formsDb = await _openBundledDb(
-          _assetFormsPath, _formsFileName, _assetFormsVersion);
+      _formsDb = await _openBundledDb(_dsForms);
     } catch (e) {
       debugPrint('_ensureFormsDb error: $e');
       return null;
@@ -183,7 +279,7 @@ class DictionaryService extends ChangeNotifier {
   Future<Database?> _ensureMungkalaDb() async {
     if (_mkDb != null) return _mkDb;
     try {
-      _mkDb = await _openBundledDb(_assetMkPath, _mkFileName, _assetMkVersion);
+      _mkDb = await _openBundledDb(_dsMungkala);
     } catch (e) {
       debugPrint('_ensureMungkalaDb error: $e');
       return null;
@@ -193,61 +289,108 @@ class DictionaryService extends ChangeNotifier {
 
   // ─── online dataset updates ──────────────────────────────────
 
+  /// เช็ค manifest บน GitHub Releases แล้วอัปเดตคลังที่มีของใหม่กว่า
+  ///
+  /// ทำทีละคลัง คลังไหนพลาดก็ไม่ลามไปคลังอื่น และไม่มีคลังไหนถูกทิ้งไว้ครึ่ง ๆ กลาง ๆ
+  /// (ดูเงื่อนไขการกู้คืนใน [_applyUpdate])
   Future<void> checkForUpdates({bool force = false}) async {
+    if (_checking) return;
+    _checking = true;
     try {
       final prefs = await SharedPreferences.getInstance();
+      _loadDataVersions(prefs);
 
       if (!force) {
         final last = prefs.getInt(_kLastCheckAt) ?? 0;
-        final since =
-            DateTime.now().millisecondsSinceEpoch - last;
+        final since = DateTime.now().millisecondsSinceEpoch - last;
         if (since < _checkInterval.inMilliseconds) return;
       }
 
       _updateStatus = DataUpdateStatus.checking;
+      _updateError = null;
       notifyListeners();
 
-      final manifest = await UpdateService.fetchManifest();
-      await prefs.setInt(
-          _kLastCheckAt, DateTime.now().millisecondsSinceEpoch);
+      final manifests = await UpdateService.fetchManifest();
+      _lastCheckAt = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setInt(_kLastCheckAt, _lastCheckAt);
 
-      if (manifest == null) {
+      if (manifests == null || manifests.isEmpty) {
         _updateStatus = DataUpdateStatus.idle;
         notifyListeners();
         return;
       }
 
-      final currentRemote = prefs.getString(_kRemoteVersion);
-      if (currentRemote == manifest.version) {
-        _updateStatus = DataUpdateStatus.idle;
-        notifyListeners();
-        return;
+      final dir = await getApplicationDocumentsDirectory();
+      var applied = 0;
+      for (final ds in _datasets) {
+        final m = manifests[ds.key];
+        if (m == null) continue;
+
+        // คลังเสริมที่ผู้ใช้ยังไม่เคยเปิด ยังไม่ต้องโหลด — ไว้แตกจาก bundle ตอนใช้จริงก่อน
+        // แล้วรอบหน้าค่อยอัปเดต (ประหยัดเน็ตคนที่ไม่ได้เปิดเล่มมังคลัตถทีปนี)
+        if (ds.lazy && !await File('${dir.path}/${ds.fileName}').exists()) {
+          continue;
+        }
+
+        // ไม่ถอยหลัง: โหลดเฉพาะเมื่อของบนเซิร์ฟเวอร์ใหม่กว่าที่ใช้อยู่จริง
+        // (เทียบสตริงวันที่ YYYY.MM.DD ตรง ๆ ได้ เพราะเรียงตามตัวอักษร = เรียงตามเวลา)
+        final current = _dataVersions[ds.key] ?? ds.assetDate;
+        if (m.version.compareTo(current) <= 0) continue;
+
+        if (await _applyUpdate(ds, m, prefs)) applied++;
       }
 
-      await _applyUpdate(manifest, prefs);
+      if (applied > 0) {
+        _updateStatus = DataUpdateStatus.applied;
+        _updateProgress = 1;
+      } else {
+        _updateStatus = _updateError == null
+            ? DataUpdateStatus.idle
+            : DataUpdateStatus.error;
+      }
+      notifyListeners();
     } catch (e) {
       debugPrint('checkForUpdates error: $e');
+      _updateError = '$e';
       _updateStatus = DataUpdateStatus.error;
       notifyListeners();
+    } finally {
+      _checking = false;
     }
   }
 
-  Future<void> _applyUpdate(
-      DataManifest manifest, SharedPreferences prefs) async {
+  void _loadDataVersions(SharedPreferences prefs) {
+    for (final ds in _datasets) {
+      _dataVersions[ds.key] = prefs.getString(_kDataVersion(ds)) ?? ds.assetDate;
+    }
+  }
+
+  /// โหลดข้อมูลคลังหนึ่งมาทับแบบ "ล้มแล้วกลับที่เดิมได้"
+  ///
+  /// ลำดับ: โหลด → เทียบ sha256 → คลายไฟล์ → **ตรวจว่าเปิดได้จริงก่อนสลับ**
+  /// → ปิดของเดิมแล้ว rename เป็น `.bak` (ไม่กินที่เพิ่ม) → สลับของใหม่เข้ามา
+  /// → เปิดของใหม่ตรวจอีกรอบ → ค่อยลบ `.bak`
+  ///
+  /// พังตรงไหนก็ตาม ของเดิมถูกคืนกลับมาและเปิดใช้ต่อได้ทันที
+  /// ถ้าคืนไม่สำเร็จจริง ๆ ยังมีทางสุดท้ายคือแตกใหม่จากไฟล์ที่ bundle มากับแอพ
+  Future<bool> _applyUpdate(
+      _Dataset ds, DataManifest m, SharedPreferences prefs) async {
     _updateStatus = DataUpdateStatus.downloading;
     _updateProgress = 0;
-    _newVersion = manifest.version;
+    _newVersion = m.version;
     _updateBannerDismissed = false;
     notifyListeners();
 
     final dir = await getApplicationDocumentsDirectory();
-    final gzPath = '${dir.path}/$_dbFileName.gz.new';
-    final newDbPath = '${dir.path}/$_dbFileName.new';
-    final dbPath = '${dir.path}/$_dbFileName';
+    final dbPath = '${dir.path}/${ds.fileName}';
+    final gzPath = '$dbPath.gz.new';
+    final newPath = '$dbPath.new';
+    final bakPath = '$dbPath.bak';
 
+    var swapped = false;
     try {
       final ok = await UpdateService.downloadGz(
-        url: manifest.url,
+        url: m.url,
         destPath: gzPath,
         onProgress: (p) {
           if (p >= 0) {
@@ -256,44 +399,89 @@ class DictionaryService extends ChangeNotifier {
           }
         },
       );
-      if (!ok) throw Exception('download failed');
+      if (!ok) throw Exception('ดาวน์โหลดไม่สำเร็จ');
 
       final actualSha = await UpdateService.sha256OfFile(gzPath);
-      if (actualSha != manifest.sha256) {
-        throw Exception('sha256 mismatch: $actualSha vs ${manifest.sha256}');
+      if (actualSha != m.sha256) {
+        throw Exception('sha256 ไม่ตรง: $actualSha ≠ ${m.sha256}');
       }
 
-      // gunzip → newDbPath
       final gzBytes = await File(gzPath).readAsBytes();
       final decoded = await compute(_gunzip, gzBytes);
-      await File(newDbPath).writeAsBytes(decoded, flush: true);
+      await File(newPath).writeAsBytes(decoded, flush: true);
 
-      // close old DB, atomic-ish swap, reopen
-      await _db?.close();
-      _db = null;
-      await File(newDbPath).rename(dbPath);
-      await File(gzPath).delete().catchError((_) => File(gzPath));
-      _db = await openDatabase(dbPath, readOnly: true);
+      // ตรวจให้ผ่านก่อน ยังไม่แตะของเดิม
+      final probe = await _openVerified(newPath, ds.probeSql, deep: true);
+      await probe.close();
 
-      await prefs.setString(_kRemoteVersion, manifest.version);
+      await _dbOf(ds)?.close();
+      _setDb(ds, null);
+      if (await File(dbPath).exists()) await File(dbPath).rename(bakPath);
+      await File(newPath).rename(dbPath);
+      swapped = true;
 
-      _updateStatus = DataUpdateStatus.applied;
-      _updateProgress = 1;
-      notifyListeners();
+      _setDb(ds, await _openVerified(dbPath, ds.probeSql));
+      await File('$dbPath.version').writeAsString('${ds.assetVersion}');
+      await prefs.setString(_kDataVersion(ds), m.version);
+      _dataVersions[ds.key] = m.version;
+
+      await _deleteQuietly(bakPath);
+      await _deleteQuietly(gzPath);
+      debugPrint('อัปเดต ${ds.key} → ${m.version} สำเร็จ');
+      return true;
     } catch (e) {
-      debugPrint('_applyUpdate error: $e');
-      // cleanup partials
-      for (final p in [gzPath, newDbPath]) {
-        try {
-          final f = File(p);
-          if (await f.exists()) await f.delete();
-        } catch (_) {}
-      }
-      // ถ้า DB ปิดไปแล้วแต่ยังไม่ rename → reopen ของเดิม
-      _db ??= await openDatabase(dbPath, readOnly: true);
-      _updateStatus = DataUpdateStatus.error;
-      notifyListeners();
+      debugPrint('_applyUpdate(${ds.key}) error: $e');
+      _updateError = '${datasetLabels[ds.key] ?? ds.key}: $e';
+      await _rollback(ds, dbPath, bakPath, swapped);
+      await _deleteQuietly(gzPath);
+      await _deleteQuietly(newPath);
+      return false;
     }
+  }
+
+  /// คืนข้อมูลชุดเดิมหลังอัปเดตล้มเหลว
+  Future<void> _rollback(
+      _Dataset ds, String dbPath, String bakPath, bool swapped) async {
+    try {
+      if (swapped && await File(bakPath).exists()) {
+        await _deleteQuietly(dbPath);
+        await File(bakPath).rename(dbPath);
+        debugPrint('${ds.key}: คืนข้อมูลชุดเดิมแล้ว');
+      }
+      if (_dbOf(ds) == null && await File(dbPath).exists()) {
+        _setDb(ds, await _openVerified(dbPath, ds.probeSql));
+      }
+    } catch (e) {
+      debugPrint('${ds.key}: คืนของเดิมไม่สำเร็จ ($e) → ใช้ชุดที่ bundle มา');
+      try {
+        _setDb(ds, await _openBundledDb(ds));
+      } catch (e2) {
+        debugPrint('${ds.key}: เปิดชุดที่ bundle มาก็ไม่ได้: $e2');
+      }
+    }
+  }
+
+  Database? _dbOf(_Dataset ds) {
+    if (ds.key == _dsCombined.key) return _db;
+    if (ds.key == _dsForms.key) return _formsDb;
+    return _mkDb;
+  }
+
+  void _setDb(_Dataset ds, Database? db) {
+    if (ds.key == _dsCombined.key) {
+      _db = db;
+    } else if (ds.key == _dsForms.key) {
+      _formsDb = db;
+    } else {
+      _mkDb = db;
+    }
+  }
+
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   Future<void> loadSettings() async {
@@ -774,3 +962,25 @@ class DictionaryService extends ChangeNotifier {
 }
 
 List<int> _gunzip(List<int> input) => gzip.decode(input);
+
+/// คลังข้อมูลหนึ่งชุดที่ bundle มากับแอพ และอัปเดตออนไลน์ทีหลังได้
+class _Dataset {
+  const _Dataset({
+    required this.key,
+    required this.assetPath,
+    required this.fileName,
+    required this.assetVersion,
+    required this.assetDate,
+    required this.probeSql,
+    required this.lazy,
+  });
+
+  /// ชื่อคลังใน manifest.json — ต้องตรงกับฝั่ง scripts/release-data.sh
+  final String key;
+  final String assetPath;
+  final String fileName;
+  final int assetVersion;
+  final String assetDate;
+  final String probeSql;
+  final bool lazy;
+}

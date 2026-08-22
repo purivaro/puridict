@@ -1,7 +1,7 @@
 name: puridict
 description: พจนานุกรมบาลี-ไทย
 
-version: 2.1.0+12
+version: 2.2.0+13
 
 environment:
   sdk: ">=2.17.0 <3.0.0"
