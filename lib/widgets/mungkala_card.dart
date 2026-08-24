@@ -7,7 +7,7 @@ import 'package:puridict/theme/app_theme.dart';
 ///
 /// ต่างจากการ์ดพจนานุกรม (DictionaryCard) เพราะหน่วยข้อมูลต่างกัน:
 ///   พจนานุกรม = headword ๑ คำ + ความหมาย/ชนิดคำ/วิคหะ
-///   ที่นี่     = ก้อนบาลีอย่างที่หนังสือยกไว้ + คำแปลของก้อนนั้น + ที่พบ (หน้า/ข้อ)
+///   ที่นี่     = ก้อนบาลีอย่างที่หนังสือยกไว้ + คำแปลของก้อนนั้น + ข้อ
 /// จึงเป็นวิดเจ็ตแยก ไม่ยัดเข้าการ์ดเดิม
 class MungkalaCard extends StatelessWidget {
   final MungkalaGroup group;
@@ -65,10 +65,9 @@ class MungkalaCard extends StatelessWidget {
             runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _chip(Icons.repeat, 'พบ ${group.count} ที่', muted),
-              if (group.pages.isNotEmpty)
-                _chip(Icons.menu_book_outlined,
-                    'หน้า ${group.pages.join(', ')}', muted),
+              // เอา "พบ N ที่" กับ "หน้า ..." ออก (หลวงพี่ภูริ 24 ส.ค. 2569)
+              // ผู้ใช้มาหาคำแปล ไม่ได้มาหาสถิติว่าสำนวนนี้โผล่กี่ที่หน้าไหน
+              // ให้ตรงกับฝั่งเว็บ (page/dict/js/components/MungkalaResult.js)
               if (hit?.kho != null) _chip(null, 'ข้อ ${hit!.kho}', muted),
             ],
           ),

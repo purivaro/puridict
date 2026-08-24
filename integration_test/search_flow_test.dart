@@ -82,7 +82,7 @@ void main() {
         reason: 'ราช เป็นรูปพจนานุกรมอยู่แล้ว บอกว่าเป็นรูปผันจะผิด');
   });
 
-  testWidgets('เล่มมังคลัตถทีปนี: ค้น "มงฺคลํ" → ขึ้นการ์ดพร้อมจำนวนที่พบ',
+  testWidgets('เล่มมังคลัตถทีปนี: ค้น "มงฺคลํ" → ขึ้นการ์ด และการ์ดต้องไม่มีสถิติที่พบ',
       (tester) async {
     app.main();
     await waitReady(tester);
@@ -93,7 +93,21 @@ void main() {
     await search(tester, 'มงฺคลํ');
 
     expect(find.byType(MungkalaCard), findsWidgets);
-    expect(find.textContaining('จากมังคลัตถทีปนี'), findsOneWidget);
-    expect(find.textContaining('พบ'), findsWidgets);
+    expect(find.textContaining('จากมังคลัตถทีปนี'), findsOneWidget,
+        reason: 'หัวข้อผลลัพธ์ยังต้องบอกจำนวนสำนวนที่พบ');
+
+    // ในการ์ดต้องไม่มี "พบ N ที่" กับ "หน้า ..." อีก (หลวงพี่ภูริ 24 ส.ค. 2569)
+    // เดิม assert หา 'พบ' เฉย ๆ ซึ่งไปเจอหัวข้อผลลัพธ์ จึงผ่านทั้งที่ไม่ได้ตรวจการ์ดเลย
+    for (final card in find.byType(MungkalaCard).evaluate()) {
+      final texts = find
+          .descendant(of: find.byWidget(card.widget), matching: find.byType(Text))
+          .evaluate()
+          .map((e) => (e.widget as Text).data ?? '')
+          .toList();
+      expect(texts.any((t) => t.contains('ที่') && t.contains('พบ')), isFalse,
+          reason: 'การ์ดไม่ควรมีสถิติ "พบ N ที่" แล้ว');
+      expect(texts.any((t) => t.startsWith('หน้า ')), isFalse,
+          reason: 'การ์ดไม่ควรมีรายการเลขหน้าแล้ว');
+    }
   });
 }
