@@ -33,8 +33,8 @@ class DictionaryService extends ChangeNotifier {
     key: 'combined',
     assetPath: 'assets/data/combined.sqlite.gz',
     fileName: 'combined.sqlite',
-    assetVersion: 7,
-    assetDate: '2026.08.20',
+    assetVersion: 8,
+    assetDate: '2026.09.24',
     probeSql: 'SELECT count(*) FROM (SELECT 1 FROM entries LIMIT 1)',
     lazy: false,
   );
